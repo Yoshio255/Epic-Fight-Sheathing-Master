@@ -1,0 +1,16 @@
+{
+  "gui.epic_fight_sheathing_master.toggle.sheathe": "%sの佩用位置: %s",
+  "gui.epic_fight_sheathing_master.toggle.carry": "%sの携行位置: %s",
+  "gui.epic_fight_sheathing_master.toggle.worn": "%sの装着表示: %s",
+  "gui.epic_fight_sheathing_master.toggle.equip_sheathed": "%s: 装備時に納刀 %s",
+  "gui.epic_fight_sheathing_master.murasama_group": "村雨・HF-BLADE",
+  "gui.epic_fight_sheathing_master.glove": "グローブ・ナックル",
+  "gui.epic_fight_sheathing_master.greatsword": "特大剣",
+  "gui.epic_fight_sheathing_master.exile_blade": "エグザイルブレード(左右共通)",
+  "gui.epic_fight_sheathing_master.waist": "腰",
+  "gui.epic_fight_sheathing_master.back": "背中",
+  "gui.epic_fight_sheathing_master.on": "オン",
+  "gui.epic_fight_sheathing_master.off": "オフ",
+  "gui.epic_fight_sheathing_master.collision_sound": "鞘の衝突音: %s",
+  "gui.epic_fight_sheathing_master.idle_slots": "持っていない時に体へ表示するホットバーのスロット(強調表示 = オン):"
+}

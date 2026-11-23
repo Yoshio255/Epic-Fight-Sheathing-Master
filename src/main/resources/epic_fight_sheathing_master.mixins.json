@@ -1,0 +1,23 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.yoshio.epic_fight_sheathing_master.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "epic_fight_sheathing_master.refmap.json",
+  "mixins": [
+    "CapabilityItemMixin",
+    "BattojutsuPassiveMixin",
+    "EfnPassiveSheathOnEquipMixin"
+  ],
+  "client": [
+    "PatchedItemInHandLayerMixin",
+    "RenderItemBaseAccessor",
+    "AvalonAnimationItemRenderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

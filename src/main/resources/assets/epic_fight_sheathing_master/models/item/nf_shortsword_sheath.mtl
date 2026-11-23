@@ -1,0 +1,4 @@
+# materials of nf_shortsword_sheath.obj
+newmtl sheath
+Kd 1.0 1.0 1.0
+map_Kd epic_fight_sheathing_master:item/nf_shortsword_sheath

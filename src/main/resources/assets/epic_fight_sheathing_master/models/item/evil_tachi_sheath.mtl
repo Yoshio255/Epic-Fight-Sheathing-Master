@@ -1,0 +1,4 @@
+# materials of the evil_tachi sheaths
+newmtl sheath
+Kd 1.0 1.0 1.0
+map_Kd epic_fight_sheathing_master:item/evil_tachi_sheath

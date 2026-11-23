@@ -1,0 +1,28 @@
+{
+  "loader": "forge:obj",
+  "model": "epic_fight_sheathing_master:models/item/evil_tachi_sheath_with_band.obj",
+  "automatic_culling": false,
+  "flip_v": false,
+  "textures": {
+    "particle": "epic_fight_sheathing_master:item/evil_tachi_sheath"
+  },
+  "display": {
+    "thirdperson_righthand": {
+      "translation": [
+        7.5,
+        -8.5,
+        7.8
+      ],
+      "rotation": [
+        90,
+        0,
+        0
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  }
+}

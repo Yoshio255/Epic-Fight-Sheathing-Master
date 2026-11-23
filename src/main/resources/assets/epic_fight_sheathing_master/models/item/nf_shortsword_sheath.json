@@ -1,0 +1,10 @@
+{
+  "loader": "forge:obj",
+  "model": "epic_fight_sheathing_master:models/item/nf_shortsword_sheath.obj",
+  "automatic_culling": false,
+  "flip_v": false,
+  "emissive_ambient": true,
+  "textures": {
+    "particle": "epic_fight_sheathing_master:item/nf_shortsword_sheath"
+  }
+}

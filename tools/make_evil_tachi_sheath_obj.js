@@ -1,0 +1,153 @@
+// Generates the simple 3D sheaths for wom:evil_tachi (black lacquer + very dark silver fittings):
+//   node tools/make_evil_tachi_sheath_obj.js
+// Plain straight rectangular boxes (like the blade itself), every box fully closed with outward-facing faces.
+// Two variants: evil_tachi_sheath (BACK mode) and evil_tachi_sheath_with_band (WAIST mode: the same sheath with a
+// cord wound round it behind the collar, as if it were tied to the belt).
+// Writes OBJ + MTL + item model JSON + a 16x16 texture into
+// src/main/resources/assets/epic_fight_sheathing_master/.
+//
+// Frame of the OBJ = the frame of Weapons of Miracles' own evil_tachi.obj (same raw coordinates, same
+// "thirdperson_righthand" display transform in the item model JSON), so the sheath is drawn exactly where the blade
+// is drawn and fits around it: the blade is a box along z (tip = -z), x +-0.0136 (thickness), y +-0.039 (width),
+// from z -2.808 (tip) to -0.413; the guard starts at z -0.4218, and the collar front face is at -0.4222 so the
+// sheath sits flush against it.
+const fs = require('fs'), zlib = require('zlib'), path = require('path');
+const OUT = path.join(__dirname, '..', 'src/main/resources/assets/epic_fight_sheathing_master');
+const NS = 'epic_fight_sheathing_master';
+const TEXTURE = 'evil_tachi_sheath';
+
+// Texture (16x16), four 4-pixel columns: body lacquer, fittings, cord, hole. u = centre of each part.
+const PARTS = {
+  body: { u: 2 / 16, rgba: [26, 24, 32, 255] },
+  metal: { u: 6 / 16, rgba: [84, 87, 96, 255] },    // very dark silver
+  cord: { u: 10 / 16, rgba: [92, 22, 30, 255] },    // dark red
+  hole: { u: 14 / 16, rgba: [4, 4, 6, 255] },       // the dark opening of the mouth
+};
+
+function build(withBand) {
+  const verts = [], uvs = [], norms = [], faces = [];
+  const normIndex = new Map(), uvIndex = new Map();
+  const nIdx = n => {
+    const k = n.join(',');
+    if (!normIndex.has(k)) { norms.push(n); normIndex.set(k, norms.length); }
+    return normIndex.get(k);
+  };
+  const uIdx = part => {
+    if (!uvIndex.has(part)) { uvs.push([PARTS[part].u, 0.5]); uvIndex.set(part, uvs.length); }
+    return uvIndex.get(part);
+  };
+
+  // A closed box along z: z from zA to zB, half sizes hx (x) and hy (y). Six faces, each with its four corners
+  // ordered counter-clockwise seen from outside (checked against the face normal), so back-face culling keeps
+  // every face.
+  function box(zA, zB, hx, hy, part) {
+    const uv = uIdx(part);
+    const [z0, z1] = [Math.min(zA, zB), Math.max(zA, zB)];
+    const c = [];
+    for (const z of [z0, z1]) for (const y of [-hy, hy]) for (const x of [-hx, hx]) c.push([x, y, z]);
+    const idx = (xs, ys, zs) => (zs ? 4 : 0) + (ys ? 2 : 0) + (xs ? 1 : 0);
+    const base = verts.length;
+    for (const v of c) verts.push(v);
+    const faceDefs = [
+      { n: [1, 0, 0], q: [idx(1, 0, 0), idx(1, 1, 0), idx(1, 1, 1), idx(1, 0, 1)] },
+      { n: [-1, 0, 0], q: [idx(0, 0, 0), idx(0, 0, 1), idx(0, 1, 1), idx(0, 1, 0)] },
+      { n: [0, 1, 0], q: [idx(0, 1, 0), idx(0, 1, 1), idx(1, 1, 1), idx(1, 1, 0)] },
+      { n: [0, -1, 0], q: [idx(0, 0, 0), idx(1, 0, 0), idx(1, 0, 1), idx(0, 0, 1)] },
+      { n: [0, 0, 1], q: [idx(0, 0, 1), idx(1, 0, 1), idx(1, 1, 1), idx(0, 1, 1)] },
+      { n: [0, 0, -1], q: [idx(0, 0, 0), idx(0, 1, 0), idx(1, 1, 0), idx(1, 0, 0)] },
+    ];
+    for (const fd of faceDefs) {
+      let q = fd.q.slice();
+      const winding = qq => {
+        const p = qq.map(i => c[i]);
+        const e1 = p[1].map((v, k) => v - p[0][k]), e2 = p[2].map((v, k) => v - p[0][k]);
+        const cr = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+        return cr[0] * fd.n[0] + cr[1] * fd.n[1] + cr[2] * fd.n[2];
+      };
+      if (winding(q) < 0) q = [q[0], q[3], q[2], q[1]];
+      if (winding(q) <= 0) throw new Error('bad winding');
+      faces.push({ v: q.map(i => base + i + 1), uv, n: nIdx(fd.n) });
+    }
+  }
+
+  // body: one plain straight box, from behind the collar to just inside the tip cap
+  box(-0.46, -2.80, 0.024, 0.050, 'body');
+  // very dark silver mouth collar (koiguchi) flush against the guard, and tip cap (kojiri): larger boxes over each end
+  box(-0.4222, -0.50, 0.029, 0.056, 'metal');
+  box(-2.74, -2.84, 0.029, 0.056, 'metal');
+  // the opening of the mouth: a black rectangle, a little larger than the blade (0.0136 x 0.039), standing 0.0017 proud
+  // of the collar's front face so it reads as a hole when the blade is out; the guard (z -0.4218 and on) hides it
+  // while the blade is in the sheath
+  box(-0.4205, -0.44, 0.019, 0.045, 'hole');
+  if (withBand) {
+    // a cord wound round the sheath behind the collar: three thin turns, slightly proud of the body
+    for (const z of [-0.54, -0.60, -0.66]) box(z, z - 0.035, 0.0275, 0.0535, 'cord');
+  }
+  return { verts, uvs, norms, faces };
+}
+
+function write(name, withBand) {
+  const { verts, uvs, norms, faces } = build(withBand);
+  let obj = `# ${name}, generated by tools/make_evil_tachi_sheath_obj.js (do not edit by hand)\n`;
+  obj += "# same frame as wom:evil_tachi's own evil_tachi.obj; tip = -z\n";
+  obj += `mtllib ${NS}:models/item/${TEXTURE}.mtl\n`;
+  for (const v of verts) obj += `v ${v[0].toFixed(5)} ${v[1].toFixed(5)} ${v[2].toFixed(5)}\n`;
+  for (const t of uvs) obj += `vt ${t[0].toFixed(5)} ${t[1]}\n`;
+  for (const n of norms) obj += `vn ${n[0]} ${n[1]} ${n[2]}\n`;
+  obj += 'usemtl sheath\n';
+  for (const f of faces) obj += 'f ' + f.v.map(i => `${i}/${f.uv}/${f.n}`).join(' ') + '\n';
+  const model = {
+    loader: 'forge:obj',
+    model: `${NS}:models/item/${name}.obj`,
+    automatic_culling: false,
+    flip_v: false,
+    textures: { particle: `${NS}:item/${TEXTURE}` },
+    display: {
+      thirdperson_righthand: { translation: [7.5, -8.5, 7.8], rotation: [90, 0, 0], scale: [1, 1, 1] },
+    },
+  };
+  fs.writeFileSync(path.join(OUT, `models/item/${name}.obj`), obj);
+  fs.writeFileSync(path.join(OUT, `models/item/${name}.json`), JSON.stringify(model, null, 2) + '\n');
+  console.log('written', name, verts.length, 'vertices', faces.length, 'faces');
+}
+
+function png(w, h, pixel) {
+  const raw = Buffer.alloc((w * 4 + 1) * h);
+  for (let y = 0; y < h; y++) {
+    raw[y * (w * 4 + 1)] = 0;
+    for (let x = 0; x < w; x++) {
+      const [r, g, b, a] = pixel(x, y);
+      const o = y * (w * 4 + 1) + 1 + x * 4;
+      raw[o] = r; raw[o + 1] = g; raw[o + 2] = b; raw[o + 3] = a;
+    }
+  }
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = buf => {
+    let c = 0xffffffff;
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const c = Buffer.alloc(4); c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+fs.mkdirSync(path.join(OUT, 'models/item'), { recursive: true });
+fs.mkdirSync(path.join(OUT, 'textures/item'), { recursive: true });
+write('evil_tachi_sheath', false);
+write('evil_tachi_sheath_with_band', true);
+fs.writeFileSync(path.join(OUT, `models/item/${TEXTURE}.mtl`),
+  `# materials of the evil_tachi sheaths\nnewmtl sheath\nKd 1.0 1.0 1.0\nmap_Kd ${NS}:item/${TEXTURE}\n`);
+fs.writeFileSync(path.join(OUT, `textures/item/${TEXTURE}.png`),
+  png(16, 16, (x) => (x < 4 ? PARTS.body.rgba : x < 8 ? PARTS.metal.rgba : x < 12 ? PARTS.cord.rgba : PARTS.hole.rgba)));

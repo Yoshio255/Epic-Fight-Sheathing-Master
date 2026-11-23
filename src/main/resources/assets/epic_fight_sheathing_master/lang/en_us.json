@@ -1,0 +1,16 @@
+{
+  "gui.epic_fight_sheathing_master.toggle.sheathe": "%s sheathe at: %s",
+  "gui.epic_fight_sheathing_master.toggle.carry": "%s carry at: %s",
+  "gui.epic_fight_sheathing_master.toggle.worn": "%s worn display: %s",
+  "gui.epic_fight_sheathing_master.toggle.equip_sheathed": "%s: sheathed on equip %s",
+  "gui.epic_fight_sheathing_master.murasama_group": "Murasama / HF-BLADE",
+  "gui.epic_fight_sheathing_master.glove": "Gloves / Knuckles",
+  "gui.epic_fight_sheathing_master.greatsword": "Greatsword",
+  "gui.epic_fight_sheathing_master.exile_blade": "Exile Blade (both sides)",
+  "gui.epic_fight_sheathing_master.waist": "Waist",
+  "gui.epic_fight_sheathing_master.back": "Back",
+  "gui.epic_fight_sheathing_master.on": "On",
+  "gui.epic_fight_sheathing_master.off": "Off",
+  "gui.epic_fight_sheathing_master.collision_sound": "Sheath collision sound: %s",
+  "gui.epic_fight_sheathing_master.idle_slots": "Hotbar slots to show on the body when not held (highlighted = on):"
+}
