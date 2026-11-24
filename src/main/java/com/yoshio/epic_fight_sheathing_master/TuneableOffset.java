@@ -584,7 +584,7 @@ public class TuneableOffset {
         // Weapons of Miracles weapons that use Epic Fight's sword / longsword / greatsword paths (applied by renderSwordBody
         // on top of the category offset): a nudge per mode, "_back" / "_waist", and per off-hand copy, "_back_off" /
         // "_waist_off". Zero until tuned (existing values are kept).
-        for (String id : new String[]{"ruine", "hollow_longsword", "iron_greataxe", "golden_greataxe", "diamond_greataxe",
+        for (String id : new String[]{"ruine", "herrscher", "hollow_longsword", "iron_greataxe", "golden_greataxe", "diamond_greataxe",
                 "netherite_greataxe"}) {
             for (String suffix : new String[]{"_back", "_waist", "_back_off", "_waist_off"}) {
                 REGISTRY.putIfAbsent("wom." + id + suffix, new TuneableOffset(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
@@ -620,12 +620,110 @@ public class TuneableOffset {
                  0.0f,     // rotZ
                  1.0f      // scale
         ));
+        // Moonless is two parts: the item "wom:moonless" is the blade (a back-only TACHI item, on top of "tachi_back"), the
+        // handle "wom:moonless_handle" is drawn separately at the right hip, Torso bone + "wom.moonless_handle". Both tuned in game.
+        REGISTRY.put("wom.moonless_back", new TuneableOffset(
+                 0.0f,     // tx
+                 1.0f,     // ty
+                 0.5f,     // tz
+               100.0f,     // rotX
+                 0.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        REGISTRY.put("wom.moonless_handle", new TuneableOffset(
+                 0.3f,     // tx
+                -0.25f,    // ty
+                -0.1f,     // tz
+               120.0f,     // rotX
+               180.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        // Moonless' blade at the back: ty = the up/down float's amplitude in blocks (Weapons of Miracles' own idle animation
+        // uses 0.0385, period 2.5 s; 0 turns the float off), tx = the glide time in seconds (the blade eases toward its
+        // position, also from the hand when it is put away: about 3x this is the time it takes; 0 = no glide, it warps).
+        REGISTRY.put("wom.moonless_bob", new TuneableOffset(
+                 0.12f,    // tx (glide time)
+                 0.0385f,  // ty (amplitude)
+                 0.0f,     // tz
+                 0.0f,     // rotX
+                 0.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        // Hollow Longsword (LONGSWORD category, drawn by renderSwordBody): BACK nudge, tuned in game (ty only). The
+        // off-hand / second-weapon copy (the left position, key "_back_off") takes the same values: only ty is set, so
+        // there is nothing to mirror. The waist keys stay zero until tuned.
+        for (String suffix : new String[]{"_back", "_back_off"}) {
+            REGISTRY.put("wom.hollow_longsword" + suffix, new TuneableOffset(
+                     0.0f,     // tx
+                    -0.2f,     // ty
+                     0.0f,     // tz
+                     0.0f,     // rotX
+                     0.0f,     // rotY
+                     0.0f      // rotZ
+            ));
+        }
         // Solar (own WeaponCategory): tuned in game.
         REGISTRY.put("wom.solar_back", new TuneableOffset(
                  0.0f,     // tx
                  0.4f,     // ty
                  1.27f,    // tz
                -90.0f,     // rotX
+                 0.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        // Satsujin (UCHIGATANA category, drawn by renderSatsujin; waist by default, its own switch womSatsujinAtWaist): the waist
+        // nudge sits on top of Epic Fight's "uchigatana" waist position, the sheath nudge is relative to the blade (the
+        // scabbard is turned and lifted to fit the blade, see renderSatsujin); "wom.satsujin_back" is in the zero loop above.
+        REGISTRY.put("wom.satsujin_back", new TuneableOffset(
+                 0.0f,     // tx
+                 0.25f,    // ty
+                 0.8f,     // tz
+               100.0f,     // rotX
+                 0.0f,     // rotY
+               180.0f      // rotZ
+        ));
+        REGISTRY.put("wom.satsujin_waist", new TuneableOffset(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
+        REGISTRY.put("wom.satsujin_sheath", new TuneableOffset(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
+        // Herrscher (SWORD category, drawn by renderSwordBody; waist by default, its own switch womHerrscherAtWaist): tuned in game.
+        REGISTRY.put("wom.herrscher_waist", new TuneableOffset(
+                 0.0f,     // tx
+                -0.2f,     // ty
+                -0.2f,     // tz
+                 0.0f,     // rotX
+                 0.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        // Herrscher's BACK nudge (on top of "sword_back" / "sword_offhand_back" for the off-hand copy): tuned in game, the same
+        // values for both sides.
+        for (String suffix : new String[]{"_back", "_back_off"}) {
+            REGISTRY.put("wom.herrscher" + suffix, new TuneableOffset(
+                     0.0f,     // tx
+                    -0.2f,     // ty
+                    -0.1f,     // tz
+                   -15.0f,     // rotX
+                     0.0f,     // rotY
+                     0.0f      // rotZ
+            ));
+        }
+        // Gesetz (a ShieldItem, so it goes through the shield-on-back loop of PatchedItemInHandLayerMixin, which applies this
+        // key after Epic Fight's vanilla-shield correction): tuned in game.
+        REGISTRY.put("wom.gesetz_back", new TuneableOffset(
+                -0.1f,     // tx
+                 0.0f,     // ty
+                 0.2f,     // tz
+               120.0f,     // rotX
+               180.0f,     // rotY
+                 0.0f      // rotZ
+        ));
+        // Gesetz' handle ("wom:gesetz_handle"), drawn at the left wrist while the shield is idle: a nudge on top of where
+        // Weapons of Miracles puts it in the hand (zero = exactly there).
+        REGISTRY.put("wom.gesetz_handle", new TuneableOffset(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f));
+        // Orbit (own WeaponCategory): tuned in game, ty only.
+        REGISTRY.put("wom.orbit_back", new TuneableOffset(
+                 0.0f,     // tx
+                -1.2f,     // ty
+                 0.0f,     // tz
+                 0.0f,     // rotX
                  0.0f,     // rotY
                  0.0f      // rotZ
         ));
@@ -656,7 +754,7 @@ public class TuneableOffset {
                  0.0f,     // rotY
                  0.0f      // rotZ
         ));
-        // Evil Tachi WAIST position (blade and its sheath; ladder-climbing keeps "tachi_ladder"). Tuned in game.
+        // Evil Tachi WAIST position (blade and its sheath). Tuned in game.
         REGISTRY.put("wom.evil_tachi_waist", new TuneableOffset(
                 -0.385f,   // tx
                  0.15f,    // ty
@@ -664,6 +762,15 @@ public class TuneableOffset {
                105.0f,     // rotX
                170.0f,     // rotY
                  0.0f      // rotZ
+        ));
+        // Evil Tachi while ladder-climbing in WAIST mode (resolveWaistOffsetKey): "tachi_ladder" with ty raised by 0.2.
+        REGISTRY.put("wom.evil_tachi_ladder", new TuneableOffset(
+                -0.7f,     // tx
+                 0.13f,    // ty
+                 0.16f,    // tz
+                70.0f,     // rotX
+               150.0f,     // rotY
+                90.0f      // rotZ
         ));
         // Evil Tachi (TACHI category, an ordinary tachi in looks): BACK mode only, applied after "tachi_back".
         // Tuned in game. Waist/back is its own switch (Config.womEvilTachiAtWaist).

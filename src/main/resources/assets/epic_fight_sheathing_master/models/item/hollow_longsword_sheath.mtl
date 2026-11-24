@@ -1,0 +1,4 @@
+# materials of the hollow_longsword sheaths
+newmtl sheath
+Kd 1.0 1.0 1.0
+map_Kd epic_fight_sheathing_master:item/hollow_longsword_sheath

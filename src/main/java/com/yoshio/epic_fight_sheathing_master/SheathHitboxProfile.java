@@ -212,6 +212,39 @@ public class SheathHitboxProfile {
         // around y 0..0.9 and at the tip (+-0.37). A few big boxes (half 0.15 x 0.38 x 0.15, z set in game), 0.74 apart
         // from y -0.55: 5 boxes to y 2.79.
         REGISTRY.put("wom.solar", new SheathHitboxProfile(0.15f, 0.38f, 0.15f, -0.03f, -0.55f, 0.05f, 0f, 0.74f, 0f, 5));
+        // hollow_longsword's own 3D sheath (tag "<item>_sheath", see PatchedItemInHandLayerMixin#renderLongswordSheathOf), in the
+        // blade's item-local frame: the sheath runs along +y from the mouth at y 0.15 to the tip at 1.85, axis at x -0.031,
+        // z 0.035. Cubes (half 0.1) 0.2 apart from y 0.35: 8 boxes to y 1.75 (+0.1). Untuned in game.
+        REGISTRY.put("wom.hollow_longsword_sheath", new SheathHitboxProfile(0.1f, 0.1f, 0.1f, -0.031f, 0.35f, 0.035f, 0f, 0.2f, 0f, 8));
+        // staff: one profile for all six Weapons of Miracles staffs (wooden .. netherite share staff.obj and the same display, so
+        // PatchedItemInHandLayerMixin#itemHitboxTag maps every "wom.<tier>_staff" to "wom.staff"). A long thin pole along y
+        // from -1.92 to 1.71 (3.63 long), 0.03 thick (x +-0.03), axis at x 0; the display is rotated 86 deg, so the
+        // pole leans: z = 0.0133 - 0.0699 * y (0.14 at the lower end, -0.09 at the top). Cubes (half 0.1) 0.25 apart from
+        // y -1.8: 14 boxes (count set in game) to y 1.45, z following the lean (step z -0.0175).
+        REGISTRY.put("wom.staff", new SheathHitboxProfile(0.1f, 0.1f, 0.1f, 0f, -1.8f, 0.139f, 0f, 0.25f, -0.0175f, 14));
+        // satsujin's own scabbard (tag "wom.satsujin_sheath", see PatchedItemInHandLayerMixin#renderSatsujin), computed from its OBJ
+        // model like nova, in the scabbard's own frame (model * display; the frame is then turned half a turn about z and lifted
+        // onto the blade): it hangs along y from the mouth at 0.08 down to the tip at -1.70, axis at x -0.025, z 0.02..0.07,
+        // thin (x +-0.03, z +-0.06). Cubes (half 0.06 x 0.07 x 0.08, height set in game) 0.2 apart from y -1.6: 9 boxes to y 0.0.
+        // Untuned in game. Tune: /efsm hitbox wom.satsujin_sheath ...
+        REGISTRY.put("wom.satsujin_sheath", new SheathHitboxProfile(0.06f, 0.07f, 0.08f, -0.025f, -1.6f, 0.04f, 0f, 0.2f, 0f, 9));
+        // herrscher (SWORD category, body drawn by renderSwordBody; an item with its own profile has collision, the sword body
+        // itself has none), computed from its OBJ model like nova: along +y from the pommel at -0.67 to the tip at 1.46
+        // (2.13 long), axis at x 0, z 0.19; the cross guard is 0.3 wide in z around y -0.1..0.2, the blade above it is thin.
+        // Kept a little small: cubes (half 0.07 x 0.11 x 0.1) 0.22 apart from y -0.5, 9 boxes to y 1.26 (+0.11).
+        // Untuned in game. Tune: /efsm hitbox wom.herrscher ...
+        REGISTRY.put("wom.herrscher", new SheathHitboxProfile(0.07f, 0.11f, 0.1f, 0f, -0.5f, 0.19f, 0f, 0.22f, 0f, 9));
+        // orbit (own WeaponCategory, drawn by renderCustomCategoryBody), computed from its OBJ model like nova: a staff along +y
+        // from -2.19 to 2.66 (4.85 long), axis at x -0.03, z 0.05, thin in the middle and wide in z (+-0.48) over the head at
+        // y 1.5..2.66 (the pommel at the bottom is 0.2 wide). Big boxes (half 0.12 x 0.3 x 0.15) 0.6 apart from y -1.9:
+        // 8 boxes to y 2.6. Untuned in game. Tune: /efsm hitbox wom.orbit ...
+        REGISTRY.put("wom.orbit", new SheathHitboxProfile(0.12f, 0.3f, 0.15f, -0.03f, -1.9f, 0.05f, 0f, 0.6f, 0f, 8));
+        // moonless' blade (back-only TACHI item, drawn by renderMoonless; the handle at the hip has no boxes), computed from its OBJ
+        // model like nova. In the frame the boxes live in (model * display) the blade runs along +z from -0.58 to the tip at
+        // 1.75 (2.33 long), axis at x 0.01, thin in x (+-0.02) and 0.1..0.2 wide in y, curving from y -0.32 at the hilt
+        // to -0.20 at the tip (a straight line at y -0.36 is used). Cubes (half 0.1 x 0.1 x 0.14) 0.25 apart from z -0.4:
+        // 9 boxes to z 1.74. Untuned in game. Tune: /efsm hitbox wom.moonless ...
+        REGISTRY.put("wom.moonless", new SheathHitboxProfile(0.1f, 0.1f, 0.14f, 0.01f, -0.36f, -0.4f, 0f, 0f, 0.25f, 9));
         // nova in the OFF hand (drawn with the THIRD_PERSON_LEFT_HAND display: its translation x -8.5 vs +7.5, and
         // the left-hand flag flips it, so the model sits 1/16 further to +x than in the right hand): same boxes,
         // offset x +0.0625. Own tag, so a main-hand and an off-hand Nova keep separate collision state.

@@ -212,6 +212,18 @@ public class EfsmConfigScreen extends Screen {
                 // Evil Tachi is an ordinary tachi in looks, with its own scabbard: "sheathe" (佩用).
                 addToggleRow(itemName("wom:evil_tachi"), "sheathe", () -> Config.womEvilTachiAtWaist,
                         Config::setWomEvilTachiAtWaist);
+                // Hollow Longsword: a longsword with its own scabbard, "sheathe" (佩用); own switch, separate from the
+                // Epic Fight longsword one.
+                addToggleRow(itemName("wom:hollow_longsword"), "sheathe", () -> Config.womHollowLongswordAtWaist,
+                        Config::setWomHollowLongswordAtWaist);
+                // Satsujin: a katana with a scabbard of its own, "sheathe" (佩用); own switch, separate from the Epic Fight
+                // katana one (default waist).
+                addToggleRow(itemName("wom:satsujin"), "sheathe", () -> Config.womSatsujinAtWaist,
+                        Config::setWomSatsujinAtWaist);
+                // Herrscher: a sword without a scabbard of its own, "carry"; own switch, separate from the Epic Fight
+                // sword one (default waist).
+                addToggleRow(itemName("wom:herrscher"), "carry", () -> Config.womHerrscherAtWaist,
+                        Config::setWomHerrscherAtWaist);
             }
             default -> {
                 // Bow and Greatsword have no separate sheath item — they just

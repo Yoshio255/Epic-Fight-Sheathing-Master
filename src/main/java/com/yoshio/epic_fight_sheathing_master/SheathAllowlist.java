@@ -98,10 +98,10 @@ public final class SheathAllowlist {
             "efn:nf_shortsword", "efn:nf_shortsword_2", "efn:meen_spear", "efn:crescent_moon", "efn:thornwheel", "efn:crimson_moon",
             "efn:exsiliumgladius", "efn:fire_exsiliumgladius", "efn:nf_dual_sword", "efn:broadblade",
             "efn:hf_murasama", "efn:hf_blade", "efn:yamato_dmc_in_sheath", "efn:yamato_dmc4_in_sheath", "efn:kusabimaru", "efn:nf_claw");
-    // Sheath list: only wom:evil_tachi by default (it is drawn with its own 3D sheath, see the mixin's
-    // ownSheathItem). The generic category sheaths (sword, longsword, dagger, ...) must NOT appear on EFN
-    // weapons; the box sheath that MeshWeaponIdleRenderer draws itself is governed by isOwnSheathAllowed instead.
-    private static final Set<String> DEFAULT_SHEATH_ITEMS = Set.of("wom:evil_tachi");
+    // Sheath list: only wom:evil_tachi, wom:hollow_longsword and wom:satsujin by default (they are drawn with their own 3D sheath,
+    // see the mixin's ownSheathItem). The generic category sheaths (sword, longsword, dagger, ...) must NOT appear on
+    // EFN weapons; the box sheath that MeshWeaponIdleRenderer draws itself is governed by isOwnSheathAllowed instead.
+    private static final Set<String> DEFAULT_SHEATH_ITEMS = Set.of("wom:evil_tachi", "wom:hollow_longsword", "wom:satsujin");
 
     private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
     private static final Pattern PATH = Pattern.compile("[a-z0-9_./-]+");

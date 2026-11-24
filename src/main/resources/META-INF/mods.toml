@@ -77,9 +77,27 @@ side = "BOTH"
 # means the game starts normally without it. ordering="AFTER" only makes us load
 # after efn when both are present, so integration code can rely on it being ready.
 # All efn-specific code must stay behind ModList.get().isLoaded("efn").
+# Any version is accepted (use at your own risk); developed against 3.4.2.
 [[dependencies."${mod_id}"]]
 modId = "efn"
 mandatory = false
-versionRange = "[3.4.2,)"
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "BOTH"
+# Optional integration with Epic Fight - Avalon (epic_fight_avalon): its mesh weapons are drawn on the body.
+# NOT required. Any version is accepted (use at your own risk).
+[[dependencies."${mod_id}"]]
+modId = "epic_fight_avalon"
+mandatory = false
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "BOTH"
+# Optional integration with Weapons of Miracles (wom): its weapons are drawn on the body. The code only
+# looks at item ids (no WoM classes), so this is for load order and the mod list. NOT required. Any version
+# is accepted (use at your own risk).
+[[dependencies."${mod_id}"]]
+modId = "wom"
+mandatory = false
+versionRange = "[0,)"
 ordering = "AFTER"
 side = "BOTH"

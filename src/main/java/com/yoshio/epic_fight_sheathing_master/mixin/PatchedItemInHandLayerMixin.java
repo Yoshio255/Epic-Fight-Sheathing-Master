@@ -171,7 +171,8 @@ public abstract class PatchedItemInHandLayerMixin {
     // Items that are ALWAYS shown on the back and are deliberately kept out of their category's waist/back setting,
     // sheath and same-category-collision handling (Nova is a TACHI-category item, but not a tachi in looks).
     // Their position is their own "<namespace>.<item id>_back" TuneableOffset.
-    private static final Set<String> BACK_ONLY_ITEMS = Set.of("wom:nova");
+    // Moonless is a TACHI-category item too (blade only: its handle is a separate item), and is drawn by moonlessParts.
+    private static final Set<String> BACK_ONLY_ITEMS = Set.of("wom:nova", "wom:moonless");
 
     private static boolean isBackOnlyItem(ItemStack stack) {
         if (stack.isEmpty()) return false;
@@ -188,6 +189,11 @@ public abstract class PatchedItemInHandLayerMixin {
             // WAIST: the sheath with a cord round it (as if tied to the belt); BACK: the plain one.
             return waist ? Epic_fight_sheathing_master.EVIL_TACHI_SHEATH_WITH_BAND.get()
                          : Epic_fight_sheathing_master.EVIL_TACHI_SHEATH.get();
+        }
+        if (id != null && "wom:hollow_longsword".equals(id.toString())) {
+            // Longsword category, drawn along the sword/longsword path (renderLongswordSheaths). The sheath with the
+            // cord in both modes (a plain one looked bare).
+            return Epic_fight_sheathing_master.HOLLOW_LONGSWORD_SHEATH_WITH_BAND.get();
         }
         return null;
     }
@@ -294,13 +300,18 @@ public abstract class PatchedItemInHandLayerMixin {
     private static String resolveWaistOffsetKey(
             ItemStack stack, CapabilityItem.WeaponCategories category, DetachedSheathSpec spec,
             LivingEntityPatch<?> entitypatch, HumanoidArmature humanoidArmature) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (category == CapabilityItem.WeaponCategories.TACHI
                 && isChestAlreadyOccupied(entitypatch, humanoidArmature)) {
+            // An item with its own ladder position ("<namespace>.<item id>_ladder", e.g. wom.evil_tachi_ladder).
+            if (id != null) {
+                String ownLadder = id.getNamespace() + "." + id.getPath() + "_ladder";
+                if (TuneableOffset.REGISTRY.containsKey(ownLadder)) return ownLadder;
+            }
             return "tachi_ladder";
         }
         // An item with its own WAIST position ("<namespace>.<item id>_waist", e.g. wom.evil_tachi_waist) uses it
         // for the blade and, since the sheath is placed relative to the blade, for the sheath too.
-        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (id != null) {
             String own = id.getNamespace() + "." + id.getPath() + "_waist";
             if (TuneableOffset.REGISTRY.containsKey(own)) return own;
@@ -322,7 +333,25 @@ public abstract class PatchedItemInHandLayerMixin {
             ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
             if (id != null && "wom:evil_tachi".equals(id.toString())) return Config.womEvilTachiAtWaist;
         }
+        if (category == CapabilityItem.WeaponCategories.LONGSWORD) return longswordAtWaist(stack);
+        if (category == CapabilityItem.WeaponCategories.SWORD) return swordAtWaist(stack);
         return useWaistConfig(category);
+    }
+
+    // Waist (true) / back (false) of a sword-category item: Weapons of Miracles' Herrscher has its own switch, every other
+    // sword follows Config.sheatheSwordAtWaist.
+    private static boolean swordAtWaist(ItemStack stack) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        if (id != null && "wom:herrscher".equals(id.toString())) return Config.womHerrscherAtWaist;
+        return Config.sheatheSwordAtWaist;
+    }
+
+    // Waist (true) / back (false) of a longsword-category item: Weapons of Miracles' Hollow Longsword has its own
+    // switch, every other longsword follows Config.sheatheLongswordAtWaist.
+    private static boolean longswordAtWaist(ItemStack stack) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        if (id != null && "wom:hollow_longsword".equals(id.toString())) return Config.womHollowLongswordAtWaist;
+        return Config.sheatheLongswordAtWaist;
     }
 
     private static boolean useWaistConfig(CapabilityItem.WeaponCategories category) {
@@ -417,6 +446,33 @@ public abstract class PatchedItemInHandLayerMixin {
             return canShowSecondIdle(category, stack) ? stack : ItemStack.EMPTY;
         }
         return ItemStack.EMPTY;
+    }
+
+    // True when `owner` (the stack findIdleStack picked as the owner of the main-hand side sheath of `category`) is the
+    // weapon currently HELD, and the main-hand side position is taken by another idle weapon of the category that is
+    // drawn there but gets no sheath (not sheath-allowed, e.g. a Weapons of Miracles longsword), while no sheathed
+    // one shares the spot. Showing the held weapon's empty sheath there would make that other weapon look as if it
+    // were sheathed in it, so the sheath is skipped (the held weapon's own side/mode takes over, see
+    // hasCompetingIdleWeapon). Side rule as in the idle-slot loop: the rank counts every allowed idle weapon of
+    // the category; with a second (off-hand) position, odd ranks are on the left.
+    private static boolean sheathSpotTakenByUnsheathed(
+            Player player, CapabilityItem.WeaponCategories category, ItemStack owner) {
+        if (owner.isEmpty() || owner != player.getMainHandItem()) return false;
+        int selected = player.getInventory().selected;
+        int rank = 0;
+        boolean takenByUnsheathed = false;
+        for (int slot : Config.getIdleSlots()) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (!SheathAllowlist.isAllowed(stack)) continue;
+            if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory() != category) continue;
+            int r = rank++;
+            if (slot == selected) continue;
+            boolean left = canShowSecondIdle(category, stack) && r % 2 == 1;
+            if (left) continue;
+            if (SheathAllowlist.isSheathAllowed(stack)) return false;
+            takenByUnsheathed = true;
+        }
+        return takenByUnsheathed;
     }
 
     // Detached-sheath-category (currently: tachi) specialization of
@@ -720,10 +776,16 @@ public abstract class PatchedItemInHandLayerMixin {
 
             postStack.pushPose();
             MathUtils.mulStack(postStack, shieldMatrix);
+            // Per-item nudge ("<namespace>.<id>_back", e.g. "wom.gesetz_back"), for shields whose own display is not
+            // the vanilla shield's (Epic Fight's shield-on-back correction is made for the vanilla one).
+            applyItemBackNudge(postStack, shieldStack);
             BakedModel shieldModel = itemRenderer.getItemModelShaper().getItemModel(shieldStack);
             itemRenderer.render(shieldStack, ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
                     true, postStack, buffer, packedLight, OverlayTexture.NO_OVERLAY, shieldModel);
             postStack.popPose();
+
+            renderShieldHandleAtWrist(shieldStack, shieldRenderer, poses, humanoidArmature,
+                    postStack, buffer, packedLight, itemRenderer);
         }
 
         // ── Off-hand weapon on back (when main-hand style disables offhand) ────
@@ -757,7 +819,7 @@ public abstract class PatchedItemInHandLayerMixin {
                             // Off-hand sword shown here only while dual-wield isn't
                             // actually valid (see isOffhandItemValid() check above) —
                             // always the left position, no evacuation concept needed.
-                            boolean useWaist = Config.sheatheSwordAtWaist;
+                            boolean useWaist = swordAtWaist(offhandStack);
                             OpenMatrix4f baseMatrix;
                             if (useWaist) {
                                 baseMatrix = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
@@ -779,7 +841,7 @@ public abstract class PatchedItemInHandLayerMixin {
                             // Exact duplicate of the SWORD offhand branch above
                             // (unreachable in current gameplay — LONGSWORD has
                             // canBePlacedOffhand(false) — kept for consistency).
-                            boolean useWaist = Config.sheatheLongswordAtWaist;
+                            boolean useWaist = longswordAtWaist(offhandStack);
                             OpenMatrix4f baseMatrix;
                             if (useWaist) {
                                 baseMatrix = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
@@ -945,6 +1007,12 @@ public abstract class PatchedItemInHandLayerMixin {
             PoseStack postStack,
             int packedLight,
             float partialTicks) {
+
+        // Moonless: glides from the back to the hand right after it was drawn (moonlessHeld).
+        if (isMoonless(stack) && entitypatch.getOriginal() instanceof Player moonlessPlayer
+                && moonlessHeld(stack, entitypatch, moonlessPlayer, poses, buffer, postStack, packedLight)) {
+            return;
+        }
 
         // Ladder-climb weapon handling below only applies to allowlisted
         // items; everything else keeps Epic Fight/the pre-allowlist native path.
@@ -1116,7 +1184,7 @@ public abstract class PatchedItemInHandLayerMixin {
             boolean evacuateToLeft = !offhandIsSword
                     && hasCompetingIdleWeapon(swordPlayer, CapabilityItem.WeaponCategories.SWORD);
 
-            boolean useWaist = Config.sheatheSwordAtWaist;
+            boolean useWaist = swordAtWaist(stack);
             OpenMatrix4f baseMatrix = resolveSwordBaseMatrix(renderer, entitypatch, humanoidArmature, poses, useWaist, evacuateToLeft);
             String offsetKey = evacuateToLeft
                     ? (useWaist ? "sword_offhand" : "sword_offhand_back")
@@ -1140,7 +1208,7 @@ public abstract class PatchedItemInHandLayerMixin {
             boolean evacuateToLeft = !offhandIsLongsword
                     && hasCompetingIdleWeapon(longswordPlayer, CapabilityItem.WeaponCategories.LONGSWORD);
 
-            boolean useWaist = Config.sheatheLongswordAtWaist;
+            boolean useWaist = longswordAtWaist(stack);
             OpenMatrix4f baseMatrix = resolveSwordBaseMatrix(renderer, entitypatch, humanoidArmature, poses, useWaist, evacuateToLeft);
             String offsetKey = evacuateToLeft
                     ? (useWaist ? "longsword_offhand" : "longsword_offhand_back")
@@ -1417,7 +1485,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // Only reached while genuinely dual-wielding (this ordinal=1 call
             // is itself guarded by Epic Fight's own isOffhandItemValid()
             // check) — always the left position, no evacuation needed.
-            boolean useWaist = Config.sheatheSwordAtWaist;
+            boolean useWaist = swordAtWaist(stack);
             OpenMatrix4f baseMatrix = resolveSwordBaseMatrix(renderer, entitypatch, swordHumanoidArmature, poses, useWaist, true);
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer =
                     Minecraft.getInstance().getItemRenderer();
@@ -1430,7 +1498,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // Exact duplicate of the SWORD branch above — unreachable in
             // current gameplay (canBePlacedOffhand(false)), kept for
             // consistency and in case that restriction changes later.
-            boolean useWaist = Config.sheatheLongswordAtWaist;
+            boolean useWaist = longswordAtWaist(stack);
             OpenMatrix4f baseMatrix = resolveSwordBaseMatrix(renderer, entitypatch, longswordHumanoidArmature, poses, useWaist, true);
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer =
                     Minecraft.getInstance().getItemRenderer();
@@ -1504,7 +1572,9 @@ public abstract class PatchedItemInHandLayerMixin {
             OpenMatrix4f[] poses, HumanoidArmature humanoidArmature,
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
 
-        boolean slot0IsDagger = !findIdleStack(player, CapabilityItem.WeaponCategories.DAGGER).isEmpty();
+        ItemStack idleDagger = findIdleStack(player, CapabilityItem.WeaponCategories.DAGGER);
+        boolean slot0IsDagger = !idleDagger.isEmpty()
+                && !sheathSpotTakenByUnsheathed(player, CapabilityItem.WeaponCategories.DAGGER, idleDagger);
 
         // Held / off-hand daggers only get a sheath when sheath-allowlisted.
         boolean offhandIsDagger = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
@@ -1704,6 +1774,17 @@ public abstract class PatchedItemInHandLayerMixin {
             PoseStack postStack, MultiBufferSource buffer, int packedLight,
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer,
             Entity collisionEntity, String collisionTag) {
+        renderSwordBody(offsetKey, stack, stack, baseMatrix, postStack, buffer, packedLight, itemRenderer,
+                collisionEntity, collisionTag);
+    }
+
+    // drawStack != stack: the item's own sheath, drawn exactly where the blade (stack) is drawn (same position,
+    // same per-item nudge), see renderLongswordSheaths.
+    private static void renderSwordBody(
+            String offsetKey, ItemStack stack, ItemStack drawStack, OpenMatrix4f baseMatrix,
+            PoseStack postStack, MultiBufferSource buffer, int packedLight,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer,
+            Entity collisionEntity, String collisionTag) {
         TuneableOffset off = TuneableOffset.REGISTRY.get(offsetKey);
         float tx   = off != null ? off.tx   : 0.0f;
         float ty   = off != null ? off.ty   : 0.0f;
@@ -1724,7 +1805,7 @@ public abstract class PatchedItemInHandLayerMixin {
         if (collisionTag != null) {
             SheathCollisionSystem.checkAndPlaySound(collisionEntity, collisionTag, postStack);
         }
-        itemRenderer.renderStatic(stack, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+        itemRenderer.renderStatic(drawStack, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
                 packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
         postStack.popPose();
     }
@@ -1800,7 +1881,8 @@ public abstract class PatchedItemInHandLayerMixin {
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
 
         ItemStack slot0 = findIdleStack(player, CapabilityItem.WeaponCategories.SWORD);
-        boolean slot0IsSword = !slot0.isEmpty();
+        boolean slot0IsSword = !slot0.isEmpty()
+                && !sheathSpotTakenByUnsheathed(player, CapabilityItem.WeaponCategories.SWORD, slot0);
         // Held / off-hand swords only get a sheath when sheath-allowlisted.
         boolean offhandIsSword = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
                 && EpicFightCapabilities.getItemStackCapability(player.getOffhandItem()).getWeaponCategory()
@@ -1905,7 +1987,8 @@ public abstract class PatchedItemInHandLayerMixin {
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
 
         ItemStack slot0 = findIdleStack(player, CapabilityItem.WeaponCategories.LONGSWORD);
-        boolean slot0IsLongsword = !slot0.isEmpty();
+        boolean slot0IsLongsword = !slot0.isEmpty()
+                && !sheathSpotTakenByUnsheathed(player, CapabilityItem.WeaponCategories.LONGSWORD, slot0);
         // Held / off-hand longswords only get a sheath when sheath-allowlisted.
         boolean offhandIsLongsword = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
                 && EpicFightCapabilities.getItemStackCapability(player.getOffhandItem()).getWeaponCategory()
@@ -1926,41 +2009,65 @@ public abstract class PatchedItemInHandLayerMixin {
         boolean showLeft = offhandIsLongsword || evacuatingHeldLongsword || !secondIdleLongsword.isEmpty();
         if (!showRight && !showLeft) return;
 
-        boolean useWaist = Config.sheatheLongswordAtWaist;
+        // (waist / back is per weapon: see longswordAtWaist, decided per side below)
 
         if (showRight) {
+            ItemStack rightLongsword = slot0IsLongsword ? slot0 : player.getMainHandItem();
+            boolean useWaist = longswordAtWaist(rightLongsword);
             OpenMatrix4f rightBase;
             if (useWaist) {
                 rightBase = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
             } else {
-                ItemStack rightLongsword = slot0IsLongsword ? slot0 : player.getMainHandItem();
                 RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(rightLongsword);
                 rightBase = renderer != null
                         ? resolveChestCorrectionViaMainHand(renderer, entitypatch, humanoidArmature, poses)
                         : null;
             }
             if (rightBase != null) {
-                renderLongswordSheathFollowing(player, rightBase, useWaist ? "longsword" : "longsword_back",
-                        postStack, buffer, packedLight, itemRenderer);
+                renderLongswordSheathOf(player, rightLongsword, rightBase, useWaist ? "longsword" : "longsword_back",
+                        useWaist, postStack, buffer, packedLight, itemRenderer);
             }
         }
         if (showLeft) {
+            ItemStack leftLongsword = offhandIsLongsword ? player.getOffhandItem()
+                    : !secondIdleLongsword.isEmpty() ? secondIdleLongsword : player.getMainHandItem();
+            boolean useWaist = longswordAtWaist(leftLongsword);
             OpenMatrix4f leftBase;
             if (useWaist) {
                 leftBase = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
             } else {
-                ItemStack leftLongsword = offhandIsLongsword ? player.getOffhandItem()
-                        : !secondIdleLongsword.isEmpty() ? secondIdleLongsword : player.getMainHandItem();
                 RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(leftLongsword);
                 leftBase = renderer != null
                         ? resolveChestCorrectionViaOffHand(renderer, entitypatch, humanoidArmature, poses)
                         : null;
             }
             if (leftBase != null) {
-                renderLongswordSheathFollowing(player, leftBase, useWaist ? "longsword_offhand" : "longsword_offhand_back",
-                        postStack, buffer, packedLight, itemRenderer);
+                renderLongswordSheathOf(player, leftLongsword, leftBase,
+                        useWaist ? "longsword_offhand" : "longsword_offhand_back",
+                        useWaist, postStack, buffer, packedLight, itemRenderer);
             }
         }
+    }
+
+    // The sheath of one longsword at the position of its body (bodyOffsetKey): the item's own 3D sheath when it has one
+    // (ownSheathItem: drawn exactly where the blade is drawn, same per-item nudge, its own collision tag
+    // "<namespace>.<item id>_sheath"), else the generic longsword sheath following the body.
+    private static void renderLongswordSheathOf(
+            Player player, ItemStack longsword, OpenMatrix4f baseMatrix, String bodyOffsetKey, boolean useWaist,
+            PoseStack postStack, MultiBufferSource buffer, int packedLight,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
+        Item own = ownSheathItem(longsword, useWaist);
+        if (own == null) {
+            renderLongswordSheathFollowing(player, baseMatrix, bodyOffsetKey, postStack, buffer, packedLight, itemRenderer);
+            return;
+        }
+        String tag = null;
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(longsword.getItem());
+        if (id != null && SheathHitboxProfile.REGISTRY.containsKey(id.getNamespace() + "." + id.getPath() + "_sheath")) {
+            tag = id.getNamespace() + "." + id.getPath() + "_sheath";
+        }
+        renderSwordBody(bodyOffsetKey, longsword, new ItemStack(own), baseMatrix, postStack, buffer, packedLight,
+                itemRenderer, player, tag);
     }
 
     /**
@@ -2016,6 +2123,9 @@ public abstract class PatchedItemInHandLayerMixin {
                     boolean isFirst = first;
                     first = false;
                     if (!isFirst && idleSlot == selectedSlot) continue;
+                    // The held weapon's empty sheath doesn't go where another (unsheathed) idle weapon is drawn;
+                    // renderHeldDetachedSheath then draws it on its own (opposite) mode.
+                    if (isFirst && sheathSpotTakenByUnsheathed(player, category, idleStack)) continue;
 
                     RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(idleStack);
                     if (renderer == null) continue;
@@ -2171,7 +2281,8 @@ public abstract class PatchedItemInHandLayerMixin {
         // The held item's own sheath is already drawn by renderDetachedSheath
         // when it is the idle-slot stack that method picked for this category
         // (with the default idleSlots=[0]: "the held slot is slot 0").
-        if (findIdleStack(player, heldCategory) == heldStack) return;
+        if (findIdleStack(player, heldCategory) == heldStack
+                && !sheathSpotTakenByUnsheathed(player, heldCategory, heldStack)) return;
 
         RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(heldStack);
         if (renderer == null) return;
@@ -2389,7 +2500,11 @@ public abstract class PatchedItemInHandLayerMixin {
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         if (id == null) return fallback;
         String tag = id.getNamespace() + "." + id.getPath();
-        return SheathHitboxProfile.REGISTRY.containsKey(tag) ? tag : fallback;
+        if (SheathHitboxProfile.REGISTRY.containsKey(tag)) return tag;
+        // Weapons of Miracles' staffs (every tier) share one model, so one profile: "wom.staff".
+        if ("wom".equals(id.getNamespace()) && id.getPath().endsWith("_staff")
+                && SheathHitboxProfile.REGISTRY.containsKey("wom.staff")) return "wom.staff";
+        return fallback;
     }
 
     // Mods whose weapons use their own WeaponCategory (not one of Epic Fight's) and are ordinary item models:
@@ -2465,6 +2580,328 @@ public abstract class PatchedItemInHandLayerMixin {
         postStack.popPose();
     }
 
+    private static boolean isMoonless(ItemStack stack) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        return id != null && "wom:moonless".equals(id.toString());
+    }
+
+    // Moonless: the item is only the blade (Weapons of Miracles' RenderMoonless draws the handle separately, in the hand,
+    // and lets the blade float on its own tool bone). Idle: the blade stays at the back, floats up and down and glides
+    // to its place (also from the hand when it is put away, see moonlessGlide); the handle goes to the right hip. Called by
+    // the generic Chest path (Moonless is a TACHI item). matrixMain = the Chest correction of the back position.
+    private static void renderMoonless(
+            Player player, ItemStack blade, OpenMatrix4f matrixMain, PoseStack postStack, MultiBufferSource buffer,
+            int packedLight, OpenMatrix4f[] poses, HumanoidArmature humanoidArmature,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
+        renderMoonlessHandle(postStack, buffer, packedLight, poses, humanoidArmature, itemRenderer);
+
+        // The full back transform of the blade: Chest correction lifted by the float, tachi_back, the item's own nudge.
+        OpenMatrix4f lift = new OpenMatrix4f();
+        lift.translate(0.0f, moonlessFloat(), 0.0f);
+        OpenMatrix4f target = new OpenMatrix4f(matrixMain);
+        target.mulFront(lift);
+        target.mulBack(buildOffsetMatrix("tachi_back"));
+        target.mulBack(buildOffsetMatrix("wom.moonless_back"));
+        OpenMatrix4f pose = moonlessGlide(player.getUUID(), target);
+
+        postStack.pushPose();
+        MathUtils.mulStack(postStack, pose);
+        TuneableOffset own = TuneableOffset.REGISTRY.get("wom.moonless_back");
+        if (own != null && own.scale != 1.0f) postStack.scale(own.scale, own.scale, own.scale);
+        // The boxes follow the blade, floating and gliding with it ("wom.moonless" in SheathHitboxProfile).
+        String hitboxTag = itemHitboxTag(blade, null);
+        if (hitboxTag != null) SheathCollisionSystem.checkAndPlaySound(player, hitboxTag, postStack);
+        itemRenderer.renderStatic(blade, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+        postStack.popPose();
+    }
+
+    // ── Moonless' glide ─────────────────────────────────────────────────────────────────────────────────────
+    // The blade is not drawn straight at its place but eases toward it (exponential smoothing of position, rotation and
+    // scale in body space, time based so the frame rate does not matter), in both directions:
+    //  - idle: the blade glides to its place at the back (moonlessGlide); from the hand when it was just put away, because
+    //    while it is HELD the glide pose is kept at the blade's real place in the hand;
+    //  - held, right after it was drawn: Weapons of Miracles' own drawing (blade + handle) is replaced for a moment by ours
+    //    (moonlessHeld, from redirectMainHandRenderItemInHand): the blade glides from the back to the hand, the handle is
+    //    in the hand at once; once it has arrived, Weapons of Miracles draws the blade again.
+    // Note: a mixin class must not have inner classes, so the state lives in plain maps.
+    private static final java.util.Map<java.util.UUID, OpenMatrix4f> MOONLESS_POSE = new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Long> MOONLESS_NANOS = new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Integer> MOONLESS_STATE = new java.util.HashMap<>();
+    private static final java.util.Map<java.util.UUID, Long> MOONLESS_DRAW_START = new java.util.HashMap<>();
+    private static final int MOONLESS_IDLE = 0;
+    private static final int MOONLESS_DRAWING = 1;
+    private static final int MOONLESS_HELD = 2;
+    // The state is stale (the weapon was away for a while): start at the target right away.
+    private static final long MOONLESS_STALE_NANOS = 1_500_000_000L;
+    // A draw glide that has not arrived by now is cut short.
+    private static final long MOONLESS_DRAW_TIMEOUT_NANOS = 1_500_000_000L;
+
+    private static void setMoonlessPose(java.util.UUID id, OpenMatrix4f pose, int state) {
+        MOONLESS_POSE.put(id, new OpenMatrix4f(pose));
+        MOONLESS_NANOS.put(id, System.nanoTime());
+        MOONLESS_STATE.put(id, state);
+    }
+
+    private static float moonlessGlideSeconds() {
+        TuneableOffset cfg = TuneableOffset.REGISTRY.get("wom.moonless_bob");
+        return cfg != null ? cfg.tx : 0.0f;
+    }
+
+    // One smoothing step of the pose toward the target; null when they are far apart (teleport, dimension change: no
+    // gliding across the world).
+    private static OpenMatrix4f moonlessGlideStep(OpenMatrix4f current, OpenMatrix4f target, float dt, float tau) {
+        yesman.epicfight.api.utils.math.Vec3f p0 = current.toTranslationVector();
+        yesman.epicfight.api.utils.math.Vec3f p1 = target.toTranslationVector();
+        float dx = p1.x - p0.x, dy = p1.y - p0.y, dz = p1.z - p0.z;
+        if (dx * dx + dy * dy + dz * dz > 16.0f) return null;
+        float a = 1.0f - (float) Math.exp(-Math.max(0.0f, dt) / tau);
+
+        org.joml.Quaternionf q0 = OpenMatrix4f.toQuaternion(new OpenMatrix4f(current).removeScale());
+        org.joml.Quaternionf q1 = OpenMatrix4f.toQuaternion(new OpenMatrix4f(target).removeScale());
+        org.joml.Quaternionf q = q0.slerp(q1, a, new org.joml.Quaternionf());
+        yesman.epicfight.api.utils.math.Vec3f s0 = current.toScaleVector();
+        yesman.epicfight.api.utils.math.Vec3f s1 = target.toScaleVector();
+
+        OpenMatrix4f rs = OpenMatrix4f.fromQuaternion(q);
+        rs.scale(s0.x + (s1.x - s0.x) * a, s0.y + (s1.y - s0.y) * a, s0.z + (s1.z - s0.z) * a);
+        OpenMatrix4f result = OpenMatrix4f.createTranslation(p0.x + dx * a, p0.y + dy * a, p0.z + dz * a);
+        result.mulBack(rs);
+        return result;
+    }
+
+    // Idle: the pose to draw the blade at (eases toward the back transform). Marks the weapon as idle, so drawing it later
+    // glides from wherever it is now.
+    private static OpenMatrix4f moonlessGlide(java.util.UUID id, OpenMatrix4f target) {
+        float tau = moonlessGlideSeconds();
+        long now = System.nanoTime();
+        OpenMatrix4f current = MOONLESS_POSE.get(id);
+        Long last = MOONLESS_NANOS.get(id);
+        if (current == null || last == null || tau <= 0.0f || now - last > MOONLESS_STALE_NANOS) {
+            setMoonlessPose(id, target, MOONLESS_IDLE);
+            return target;
+        }
+        OpenMatrix4f next = moonlessGlideStep(current, target, (now - last) / 1.0e9f, tau);
+        if (next == null) next = target;
+        setMoonlessPose(id, next, MOONLESS_IDLE);
+        return next;
+    }
+
+    // The held blade's place in body space (Tool bone pose x the item's Tool_R correction, as RenderMoonless does), or null.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static OpenMatrix4f moonlessHandBlade(LivingEntityPatch entitypatch, ItemStack blade, OpenMatrix4f[] poses) {
+        if (!(entitypatch.getArmature() instanceof yesman.epicfight.model.armature.types.ToolHolderArmature holder)) return null;
+        RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(blade);
+        if (renderer == null) return null;
+        OpenMatrix4f correction = ((RenderItemBaseAccessor) renderer).getMainhandCorrectionTransforms().get("Tool_R");
+        Joint tool = holder.rightToolJoint();
+        if (correction == null || tool == null) return null;
+        OpenMatrix4f held = new OpenMatrix4f(correction);
+        held.mulFront(poses[tool.getId()]);
+        return held;
+    }
+
+    // Held (called for every frame the Moonless is drawn in the main hand). Keeps the glide pose at the blade's place in
+    // the hand; right after it was drawn from the back, draws blade and handle itself until the blade has arrived. Returns
+    // true when it drew them (Weapons of Miracles' own drawing must then be skipped).
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static boolean moonlessHeld(
+            ItemStack stack, LivingEntityPatch entitypatch, Player player, OpenMatrix4f[] poses,
+            MultiBufferSource buffer, PoseStack postStack, int packedLight) {
+        OpenMatrix4f held = moonlessHandBlade(entitypatch, stack, poses);
+        if (held == null) return false;
+
+        java.util.UUID id = player.getUUID();
+        float tau = moonlessGlideSeconds();
+        long now = System.nanoTime();
+        Integer state = MOONLESS_STATE.get(id);
+        OpenMatrix4f current = MOONLESS_POSE.get(id);
+        Long last = MOONLESS_NANOS.get(id);
+        if (tau <= 0.0f || state == null || state == MOONLESS_HELD || current == null || last == null
+                || now - last > MOONLESS_STALE_NANOS) {
+            setMoonlessPose(id, held, MOONLESS_HELD);
+            return false;
+        }
+        if (state == MOONLESS_IDLE) MOONLESS_DRAW_START.put(id, now);
+
+        OpenMatrix4f next = moonlessGlideStep(current, held, (now - last) / 1.0e9f, tau);
+        Long start = MOONLESS_DRAW_START.get(id);
+        boolean arrived = next == null || (start != null && now - start > MOONLESS_DRAW_TIMEOUT_NANOS);
+        if (!arrived) {
+            yesman.epicfight.api.utils.math.Vec3f p0 = next.toTranslationVector();
+            yesman.epicfight.api.utils.math.Vec3f p1 = held.toTranslationVector();
+            float dx = p1.x - p0.x, dy = p1.y - p0.y, dz = p1.z - p0.z;
+            org.joml.Quaternionf q0 = OpenMatrix4f.toQuaternion(new OpenMatrix4f(next).removeScale());
+            org.joml.Quaternionf q1 = OpenMatrix4f.toQuaternion(new OpenMatrix4f(held).removeScale());
+            arrived = dx * dx + dy * dy + dz * dz < 0.0004f && Math.abs(q0.dot(q1)) > 0.9998f;
+        }
+        if (arrived) {
+            setMoonlessPose(id, held, MOONLESS_HELD);
+            return false;
+        }
+        setMoonlessPose(id, next, MOONLESS_DRAWING);
+
+        net.minecraft.client.renderer.entity.ItemRenderer itemRenderer = Minecraft.getInstance().getItemRenderer();
+        // The blade on its way to the hand.
+        postStack.pushPose();
+        MathUtils.mulStack(postStack, next);
+        itemRenderer.renderStatic(stack, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+        postStack.popPose();
+        // The handle in the hand at once, where Weapons of Miracles puts it (hand bone x the Tool_R correction, nudged).
+        Item handleItem = ForgeRegistries.ITEMS.getValue(ResourceLocation.tryParse("wom:moonless_handle"));
+        RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(stack);
+        if (handleItem != null && handleItem != net.minecraft.world.item.Items.AIR && renderer != null
+                && entitypatch.getArmature() instanceof HumanoidArmature humanoid) {
+            OpenMatrix4f correction = ((RenderItemBaseAccessor) renderer).getMainhandCorrectionTransforms().get("Tool_R");
+            if (correction != null) {
+                OpenMatrix4f handle = new OpenMatrix4f(correction);
+                handle.mulFront(poses[humanoid.handR.getId()]);
+                handle.translate(-0.001f, -0.02f, -0.08f);
+                postStack.pushPose();
+                MathUtils.mulStack(postStack, handle);
+                itemRenderer.renderStatic(new ItemStack(handleItem), ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                        packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+                postStack.popPose();
+            }
+        }
+        return true;
+    }
+
+    // The float of Moonless' blade, taken from Weapons of Miracles' own idle animation (moonless_idle: the Tool_R bone goes
+    // y 0.270 -> 0.193 -> 0.270 over 2.5 s, smoothly: mean 0.232, amplitude 0.0385). The amplitude is "wom.moonless_bob" ty
+    // (tunable, /efsm tune wom.moonless_bob ty <value>; 0 = no float). Time: game ticks + partial tick, so it runs at the
+    // same pace for everybody and stands still while the game is paused.
+    private static final float MOONLESS_FLOAT_PERIOD_SECONDS = 2.5f;
+
+    private static float moonlessFloat() {
+        TuneableOffset bob = TuneableOffset.REGISTRY.get("wom.moonless_bob");
+        float amplitude = bob != null ? bob.ty : 0.0f;
+        net.minecraft.client.multiplayer.ClientLevel level = Minecraft.getInstance().level;
+        if (amplitude == 0.0f || level == null) return 0.0f;
+        double seconds = (level.getGameTime() + Minecraft.getInstance().getFrameTime()) / 20.0;
+        return (float) (amplitude * Math.cos(2.0 * Math.PI * seconds / MOONLESS_FLOAT_PERIOD_SECONDS));
+    }
+
+    // Gesetz (a shield) has a separate handle item "wom:gesetz_handle" which Weapons of Miracles draws at the hand while the
+    // shield is held (RenderGesetz: Tool_R correction x hand bone, nudged by (-0.001, -0.02, -0.08); the off-hand one uses the
+    // left hand bone and display). Idle, the big plate is on the back (the shield loop) and the handle stays at the left
+    // wrist, always shown. "wom.gesetz_handle" is a tuneable nudge on top of that. Generic: "<id>_handle" of the shield.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void renderShieldHandleAtWrist(
+            ItemStack shieldStack, RenderItemBase shieldRenderer, OpenMatrix4f[] poses, HumanoidArmature humanoidArmature,
+            PoseStack postStack, MultiBufferSource buffer, int packedLight,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(shieldStack.getItem());
+        if (id == null || !"wom".equals(id.getNamespace())) return;
+        Item handleItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation(id.getNamespace(), id.getPath() + "_handle"));
+        if (handleItem == null || handleItem == net.minecraft.world.item.Items.AIR) return;
+
+        OpenMatrix4f correction = ((RenderItemBaseAccessor) shieldRenderer).getMainhandCorrectionTransforms().get("Tool_R");
+        if (correction == null) return;
+        OpenMatrix4f handle = new OpenMatrix4f(correction);
+        handle.mulFront(poses[humanoidArmature.handL.getId()]);
+        handle.translate(-0.001f, -0.02f, -0.08f);
+
+        postStack.pushPose();
+        MathUtils.mulStack(postStack, handle);
+        applyOffset(postStack, TuneableOffset.REGISTRY.get(id.getNamespace() + "." + id.getPath() + "_handle"), false);
+        itemRenderer.renderStatic(new ItemStack(handleItem), ItemDisplayContext.THIRD_PERSON_LEFT_HAND,
+                packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+        postStack.popPose();
+    }
+
+    // Moonless' handle (the item "wom:moonless_handle", which Weapons of Miracles draws at the hand while the weapon is held)
+    // at the right hip: Torso bone + the tuneable "wom.moonless_handle", the same technique as a waist-carried blade.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void renderMoonlessHandle(
+            PoseStack postStack, MultiBufferSource buffer, int packedLight,
+            OpenMatrix4f[] poses, HumanoidArmature humanoidArmature,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
+        Item handleItem = ForgeRegistries.ITEMS.getValue(ResourceLocation.tryParse("wom:moonless_handle"));
+        if (handleItem == null || handleItem == net.minecraft.world.item.Items.AIR) return;
+
+        TuneableOffset off = TuneableOffset.REGISTRY.get("wom.moonless_handle");
+        float tx   = off != null ? off.tx   : 0.0f;
+        float ty   = off != null ? off.ty   : 0.0f;
+        float tz   = off != null ? off.tz   : 0.0f;
+        float rotX = off != null ? off.rotX : 0.0f;
+        float rotY = off != null ? off.rotY : 0.0f;
+        float rotZ = off != null ? off.rotZ : 0.0f;
+
+        OpenMatrix4f torsoMatrix = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
+        torsoMatrix.translate(tx, ty, tz);
+
+        postStack.pushPose();
+        MathUtils.mulStack(postStack, torsoMatrix);
+        postStack.mulPose(Axis.XP.rotationDegrees(rotX));
+        postStack.mulPose(Axis.YP.rotationDegrees(rotY));
+        postStack.mulPose(Axis.ZP.rotationDegrees(rotZ));
+        itemRenderer.renderStatic(new ItemStack(handleItem), ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+        postStack.popPose();
+    }
+
+    private static boolean isSatsujin(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        return id != null && "wom:satsujin".equals(id.toString());
+    }
+
+    // Satsujin is a katana with a scabbard of its own ("wom:satsujin_sheath", which Weapons of Miracles draws in the LEFT hand
+    // while the blade is held). Idle (not held; held, Weapons of Miracles draws both), the blade is drawn at the waist
+    // (Torso bone, Epic Fight's "uchigatana" position + "wom.satsujin_waist") or on the back (Epic Fight's Chest correction
+    // + "wom.satsujin_back"), per Config.womSatsujinAtWaist, and the scabbard goes on it: the scabbard model hangs
+    // downward from its mouth at y 0.08 (to -1.70), the blade points up (-0.62 .. 1.78), so the scabbard is turned half
+    // a turn about z (x also flips) and lifted so that its mouth sits at the guard: its tip then meets the blade's tip.
+    // "wom.satsujin_sheath" nudges it relative to the blade; the collision boxes of "wom.satsujin_sheath" follow it.
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void renderSatsujin(
+            LivingEntityPatch entitypatch, Player player, ItemStack blade, PoseStack postStack, MultiBufferSource buffer,
+            int packedLight, OpenMatrix4f[] poses, HumanoidArmature humanoidArmature,
+            net.minecraft.client.renderer.entity.ItemRenderer itemRenderer) {
+        boolean waist = Config.womSatsujinAtWaist;
+
+        postStack.pushPose();
+        if (waist) {
+            TuneableOffset base = TuneableOffset.REGISTRY.get("uchigatana");
+            OpenMatrix4f torso = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
+            if (base != null) torso.translate(base.tx, base.ty, base.tz);
+            MathUtils.mulStack(postStack, torso);
+            if (base != null) {
+                postStack.mulPose(Axis.XP.rotationDegrees(base.rotX));
+                postStack.mulPose(Axis.YP.rotationDegrees(base.rotY));
+                postStack.mulPose(Axis.ZP.rotationDegrees(base.rotZ));
+            }
+            applyOffset(postStack, TuneableOffset.REGISTRY.get("wom.satsujin_waist"), false);
+        } else {
+            RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(blade);
+            if (renderer == null) {
+                postStack.popPose();
+                return;
+            }
+            MathUtils.mulStack(postStack, resolveChestCorrectionViaMainHand(renderer, entitypatch, humanoidArmature, poses));
+            applyItemBackNudge(postStack, blade);
+        }
+
+        itemRenderer.renderStatic(blade, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+
+        Item sheathItem = SheathAllowlist.isSheathAllowed(blade)
+                ? ForgeRegistries.ITEMS.getValue(ResourceLocation.tryParse("wom:satsujin_sheath")) : null;
+        if (sheathItem != null && sheathItem != net.minecraft.world.item.Items.AIR) {
+            postStack.pushPose();
+            applyOffset(postStack, TuneableOffset.REGISTRY.get("wom.satsujin_sheath"), false);
+            postStack.translate(-0.015f, 0.1f, 0.0f);
+            postStack.mulPose(Axis.ZP.rotationDegrees(180.0f));
+            SheathCollisionSystem.checkAndPlaySound(player, "wom.satsujin_sheath", postStack);
+            itemRenderer.renderStatic(new ItemStack(sheathItem), ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                    packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+            postStack.popPose();
+        }
+        postStack.popPose();
+    }
+
     /**
      * Renders one idle-slot weapon's body (the per-slot part of what used to
      * be renderSlot0Weapon's tail). Uses its own early-return logic; returning
@@ -2518,12 +2955,19 @@ public abstract class PatchedItemInHandLayerMixin {
             return;
         }
 
+        // Satsujin (WoM, UCHIGATANA category but not Epic Fight's UchigatanaItem): blade + its own scabbard, waist or back.
+        if (isSatsujin(slot0)) {
+            renderSatsujin(entitypatch, player, slot0, postStack, buffer, packedLight, poses, humanoidArmature,
+                    itemRenderer);
+            return;
+        }
+
         // SWORD: idle slot0 sword (not currently held) always shows at the
         // right position — evacuation only applies to the actually-HELD
         // competing sword (see redirectMainHandRenderItemInHand), never to
         // slot0's own idle display.
         if (category == CapabilityItem.WeaponCategories.SWORD) {
-            boolean useWaist = Config.sheatheSwordAtWaist;
+            boolean useWaist = swordAtWaist(slot0);
             OpenMatrix4f baseMatrix;
             if (useWaist) {
                 baseMatrix = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
@@ -2544,7 +2988,7 @@ public abstract class PatchedItemInHandLayerMixin {
 
         // LONGSWORD: exact duplicate of the SWORD idle branch above.
         if (category == CapabilityItem.WeaponCategories.LONGSWORD) {
-            boolean useWaist = Config.sheatheLongswordAtWaist;
+            boolean useWaist = longswordAtWaist(slot0);
             OpenMatrix4f baseMatrix;
             if (useWaist) {
                 baseMatrix = new OpenMatrix4f(poses[humanoidArmature.torso.getId()]);
@@ -2710,6 +3154,11 @@ public abstract class PatchedItemInHandLayerMixin {
         }
 
         poses[chestId] = originalChestPose;
+
+        if (isMoonless(slot0)) {
+            renderMoonless(player, slot0, matrixMain, postStack, buffer, packedLight, poses, humanoidArmature, itemRenderer);
+            return;
+        }
 
         // ── Weapon body ────────────────────────────────────────────────────────
         postStack.pushPose();

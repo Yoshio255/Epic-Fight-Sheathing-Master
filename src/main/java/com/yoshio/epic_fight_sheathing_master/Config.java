@@ -140,6 +140,27 @@ public class Config {
                             "false = back position, Chest bone")
                    .define("womEvilTachiAtWaist", true);
 
+    private static final ForgeConfigSpec.BooleanValue WOM_HOLLOW_LONGSWORD_AT_WAIST_ENTRY =
+            BUILDER.comment("Whether to carry the Weapons of Miracles Hollow Longsword at the waist (true) or on the back (false).",
+                            "It is a longsword in Epic Fight's terms, but has its own switch separate from the Epic Fight longsword one.",
+                            "true  = waist position, Torso bone",
+                            "false = back position, Chest bone (default)")
+                   .define("womHollowLongswordAtWaist", false);
+
+    private static final ForgeConfigSpec.BooleanValue WOM_HERRSCHER_AT_WAIST_ENTRY =
+            BUILDER.comment("Whether to carry the Weapons of Miracles Herrscher at the waist (true) or on the back (false).",
+                            "It is a sword in Epic Fight's terms, but has its own switch separate from the Epic Fight sword one.",
+                            "true  = waist position, Torso bone (default)",
+                            "false = back position, Chest bone")
+                   .define("womHerrscherAtWaist", true);
+
+    private static final ForgeConfigSpec.BooleanValue WOM_SATSUJIN_AT_WAIST_ENTRY =
+            BUILDER.comment("Whether to carry the Weapons of Miracles Satsujin at the waist (true) or on the back (false).",
+                            "It is drawn with its own scabbard, separate from the Epic Fight katana (uchigatana) setting.",
+                            "true  = waist position, Torso bone (default)",
+                            "false = back position, Chest bone")
+                   .define("womSatsujinAtWaist", true);
+
     private static final ForgeConfigSpec.BooleanValue EFN_MURASAMA_SHEATH_ON_EQUIP_ENTRY =
             BUILDER.comment("EFN Murasama and HF-BLADE: start in the sheathed state the moment they are taken into the hand (EFN itself starts them drawn).",
                             "This changes the game state (server side): it uses EFN own sheath state, so the sheathed idle / walk / run animations apply from the start.",
@@ -190,6 +211,10 @@ public class Config {
     public static boolean efnBroadbladeAtWaist = true;
     /** Weapons of Miracles Evil Tachi: waist (true) / back (false). */
     public static boolean womEvilTachiAtWaist = true;
+    /** Weapons of Miracles Hollow Longsword: waist (true) / back (false). */
+    public static boolean womHollowLongswordAtWaist = false;
+    public static boolean womHerrscherAtWaist = true;
+    public static boolean womSatsujinAtWaist = true;
     /** On/off of the worn display of the wild claws (default off). Reuses the "at waist" flag plumbing: true = shown. */
     public static boolean efnNfClawWorn = false;
     /** On/off of the worn display of gloves / knuckles (EF's glove etc.), default off. */
@@ -249,6 +274,24 @@ public class Config {
         }
     }
 
+    public static void setWomHollowLongswordAtWaist(boolean value) {
+        WOM_HOLLOW_LONGSWORD_AT_WAIST_ENTRY.set(value);
+        WOM_HOLLOW_LONGSWORD_AT_WAIST_ENTRY.save();
+        womHollowLongswordAtWaist = value;
+    }
+
+    public static void setWomSatsujinAtWaist(boolean value) {
+        WOM_SATSUJIN_AT_WAIST_ENTRY.set(value);
+        WOM_SATSUJIN_AT_WAIST_ENTRY.save();
+        womSatsujinAtWaist = value;
+    }
+
+    public static void setWomHerrscherAtWaist(boolean value) {
+        WOM_HERRSCHER_AT_WAIST_ENTRY.set(value);
+        WOM_HERRSCHER_AT_WAIST_ENTRY.save();
+        womHerrscherAtWaist = value;
+    }
+
     public static void setWomEvilTachiAtWaist(boolean value) {
         WOM_EVIL_TACHI_AT_WAIST_ENTRY.set(value);
         WOM_EVIL_TACHI_AT_WAIST_ENTRY.save();
@@ -300,6 +343,9 @@ public class Config {
         efnBroadbladeAtWaist = EFN_BROADBLADE_AT_WAIST_ENTRY.get();
         efnNfClawWorn = EFN_NF_CLAW_WORN_ENTRY.get();
         womEvilTachiAtWaist = WOM_EVIL_TACHI_AT_WAIST_ENTRY.get();
+        womHollowLongswordAtWaist = WOM_HOLLOW_LONGSWORD_AT_WAIST_ENTRY.get();
+        womHerrscherAtWaist = WOM_HERRSCHER_AT_WAIST_ENTRY.get();
+        womSatsujinAtWaist = WOM_SATSUJIN_AT_WAIST_ENTRY.get();
         fistGlovesWorn = FIST_GLOVES_WORN_ENTRY.get();
         efnMurasamaSheathOnEquip = EFN_MURASAMA_SHEATH_ON_EQUIP_ENTRY.get();
         autoAllowMode = AUTO_ALLOW_MODE_ENTRY.get();
