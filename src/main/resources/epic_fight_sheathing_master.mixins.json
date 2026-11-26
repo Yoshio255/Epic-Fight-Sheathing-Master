@@ -12,7 +12,8 @@
   "client": [
     "PatchedItemInHandLayerMixin",
     "RenderItemBaseAccessor",
-    "AvalonAnimationItemRenderMixin"
+    "AvalonAnimationItemRenderMixin",
+    "ClientLevelParticleMixin"
   ],
   "injectors": {
     "defaultRequire": 1

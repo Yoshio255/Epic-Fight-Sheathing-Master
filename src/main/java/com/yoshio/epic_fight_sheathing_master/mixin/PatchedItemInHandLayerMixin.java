@@ -42,6 +42,7 @@ import net.minecraftforge.registries.RegistryObject;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
@@ -71,7 +72,12 @@ import yesman.epicfight.world.capabilities.item.WeaponCategory;
 import yesman.epicfight.world.item.EpicFightItems;
 import yesman.epicfight.world.item.UchigatanaItem;
 
-@Mixin(PatchedItemInHandLayer.class)
+// priority 500 (default is 1000): Mixin lets the LATER-applied redirect take an instruction two redirects both want, so with a
+// lower value than the default this mod is applied first and loses to another addon that redirects the same call (Epic Fight:
+// BK's Poise & Stance redirects the main-hand renderItemInHand too): this one is then skipped (see
+// redirectMainHandRenderItemInHand's require = 0) instead of the game crashing or the other addon failing. A higher value
+// would make it the other way round and crash the other addon.
+@Mixin(value = PatchedItemInHandLayer.class, priority = 500)
 public abstract class PatchedItemInHandLayerMixin {
 
     // ── Category filter ────────────────────────────────────────────────────────
@@ -174,6 +180,35 @@ public abstract class PatchedItemInHandLayerMixin {
     // Moonless is a TACHI-category item too (blade only: its handle is a separate item), and is drawn by moonlessParts.
     private static final Set<String> BACK_ONLY_ITEMS = Set.of("wom:nova", "wom:moonless");
 
+    // Weapons this mod supports officially are judged PER ITEM, not by the category another mod (or an addon such as WoM Plus,
+    // which gives Evil Tachi, Nova, Hollow Longsword, Blackstar and the greataxes categories of its own) happens to give
+    // them: the category each of them has in Weapons of Miracles itself, which all the display code here is built on.
+    // Everything not listed is judged by its category as before. (Weapons of Miracles' other weapons have categories of
+    // their own and are drawn by renderCustomCategoryBody, they are not listed.)
+    private static final java.util.Map<String, CapabilityItem.WeaponCategories> OFFICIAL_CATEGORIES = java.util.Map.ofEntries(
+            java.util.Map.entry("wom:evil_tachi", CapabilityItem.WeaponCategories.TACHI),
+            java.util.Map.entry("wom:nova", CapabilityItem.WeaponCategories.TACHI),
+            java.util.Map.entry("wom:moonless", CapabilityItem.WeaponCategories.TACHI),
+            java.util.Map.entry("wom:hollow_longsword", CapabilityItem.WeaponCategories.LONGSWORD),
+            java.util.Map.entry("wom:ruine", CapabilityItem.WeaponCategories.LONGSWORD),
+            java.util.Map.entry("wom:herrscher", CapabilityItem.WeaponCategories.SWORD),
+            java.util.Map.entry("wom:satsujin", CapabilityItem.WeaponCategories.UCHIGATANA),
+            java.util.Map.entry("wom:agony", CapabilityItem.WeaponCategories.SPEAR),
+            java.util.Map.entry("wom:blackstar", CapabilityItem.WeaponCategories.SPEAR),
+            java.util.Map.entry("wom:iron_greataxe", CapabilityItem.WeaponCategories.GREATSWORD),
+            java.util.Map.entry("wom:golden_greataxe", CapabilityItem.WeaponCategories.GREATSWORD),
+            java.util.Map.entry("wom:diamond_greataxe", CapabilityItem.WeaponCategories.GREATSWORD),
+            java.util.Map.entry("wom:netherite_greataxe", CapabilityItem.WeaponCategories.GREATSWORD));
+
+    private static WeaponCategory weaponCategoryOf(ItemStack stack) {
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        if (id != null) {
+            CapabilityItem.WeaponCategories official = OFFICIAL_CATEGORIES.get(id.toString());
+            if (official != null) return official;
+        }
+        return EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory();
+    }
+
     private static boolean isBackOnlyItem(ItemStack stack) {
         if (stack.isEmpty()) return false;
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
@@ -253,8 +288,10 @@ public abstract class PatchedItemInHandLayerMixin {
             applyOffset(postStack, TuneableOffset.REGISTRY.get("tachi_back"), false);
             applyItemBackNudge(postStack, bladeStack);
         }
-        // A little smoke from the mouth while the blade is sheathed (not in the hand: held, the weapon makes its own).
-        if (entitypatch.getOriginal() instanceof Player owner && owner.getMainHandItem() != bladeStack) {
+        // A little smoke from the mouth while the blade is sheathed (not in the hand: held, the weapon makes its own). Held while
+        // climbing, the blade is stowed in the sheath (and the weapon's own smoke is dropped, see HeldWeaponSmoke): leak too.
+        if (entitypatch.getOriginal() instanceof Player owner
+                && (owner.getMainHandItem() != bladeStack || isChestAlreadyOccupied(entitypatch, humanoidArmature))) {
             leakSmokeFromMouth(owner, postStack);
         }
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(bladeStack.getItem());
@@ -285,7 +322,7 @@ public abstract class PatchedItemInHandLayerMixin {
     // one" ladder-climb overlap handling in redirectMainHandRenderItemInHand.
     private static boolean isDetachedSheathCategory(ItemStack stack) {
         if (isBackOnlyItem(stack)) return false;
-        WeaponCategory rawCategory = EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory();
+        WeaponCategory rawCategory = weaponCategoryOf(stack);
         return rawCategory instanceof CapabilityItem.WeaponCategories category
                 && DETACHED_SHEATH_SPECS.containsKey(category);
     }
@@ -380,7 +417,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // A non-allowlisted idle weapon isn't displayed, so it can't collide.
             if (!SheathAllowlist.isAllowed(stack)) continue;
             if (isBackOnlyItem(stack)) continue;
-            if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory() == heldCategory) {
+            if (weaponCategoryOf(stack) == heldCategory) {
                 return true;
             }
         }
@@ -421,7 +458,7 @@ public abstract class PatchedItemInHandLayerMixin {
             ItemStack stack = player.getInventory().getItem(slot);
             if (!SheathAllowlist.isSheathAllowed(stack)) continue;
             if (isBackOnlyItem(stack)) continue;
-            if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory() == category) {
+            if (weaponCategoryOf(stack) == category) {
                 return stack;
             }
         }
@@ -438,7 +475,7 @@ public abstract class PatchedItemInHandLayerMixin {
             ItemStack stack = player.getInventory().getItem(slot);
             if (!SheathAllowlist.isSheathAllowed(stack)) continue;
             if (isBackOnlyItem(stack)) continue;
-            if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory() != category) continue;
+            if (weaponCategoryOf(stack) != category) continue;
             if (!seenFirst) {
                 seenFirst = true;
                 continue;
@@ -464,7 +501,7 @@ public abstract class PatchedItemInHandLayerMixin {
         for (int slot : Config.getIdleSlots()) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (!SheathAllowlist.isAllowed(stack)) continue;
-            if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory() != category) continue;
+            if (weaponCategoryOf(stack) != category) continue;
             int r = rank++;
             if (slot == selected) continue;
             boolean left = canShowSecondIdle(category, stack) && r % 2 == 1;
@@ -486,7 +523,7 @@ public abstract class PatchedItemInHandLayerMixin {
     private static boolean hasCompetingHeldDetachedSheathWeapon(Player player) {
         ItemStack heldStack = player.getMainHandItem();
         if (isBackOnlyItem(heldStack)) return false;
-        WeaponCategory rawHeldCategory = EpicFightCapabilities.getItemStackCapability(heldStack).getWeaponCategory();
+        WeaponCategory rawHeldCategory = weaponCategoryOf(heldStack);
         if (!(rawHeldCategory instanceof CapabilityItem.WeaponCategories heldCategory)) return false;
         if (!DETACHED_SHEATH_SPECS.containsKey(heldCategory)) return false;
 
@@ -606,7 +643,7 @@ public abstract class PatchedItemInHandLayerMixin {
             if (detachedSheathRelativeOffsets.containsKey(detachedCategory)) continue;
             for (int i = 0; i < 9; i++) {
                 ItemStack s = player.getInventory().getItem(i);
-                WeaponCategory rawSlotCategory = EpicFightCapabilities.getItemStackCapability(s).getWeaponCategory();
+                WeaponCategory rawSlotCategory = weaponCategoryOf(s);
                 if (rawSlotCategory != detachedCategory) continue;
                 RenderItemBase dr = ClientEngine.getInstance().renderEngine.getItemRenderer(s);
                 if (dr != null) {
@@ -800,7 +837,7 @@ public abstract class PatchedItemInHandLayerMixin {
             ItemStack offhandStack = player.getOffhandItem();
             if (!offhandStack.isEmpty() && SheathAllowlist.isAllowed(offhandStack)) {
                 CapabilityItem offCap = EpicFightCapabilities.getItemStackCapability(offhandStack);
-                WeaponCategory offRawCat = offCap.getWeaponCategory();
+                WeaponCategory offRawCat = weaponCategoryOf(offhandStack);
                 if (offRawCat instanceof CapabilityItem.WeaponCategories offCat
                         && !SKIP_CATEGORIES.contains(offCat)) {
 
@@ -981,8 +1018,12 @@ public abstract class PatchedItemInHandLayerMixin {
     //
     // Condition-false path: fall through to the original renderItemInHand call.
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    @Redirect(
+    // This is a @ModifyArg (the buffer), not a @Redirect: another addon (Epic Fight: BK's Poise & Stance) redirects the very same call, and only
+    // one @Redirect can take an instruction (a crash for the one that loses). @ModifyArg does not replace the call, it only
+    // changes one argument (not @ModifyArgs: its generated Args class could not be loaded in a Forge environment), so it works together with such a redirect (this mod is applied first, see the priority). The handler
+    // below draws the held weapon itself (redirectMainHandRenderItemInHand, which also does the pass-through draws), then hands
+    // the original call a buffer that discards everything, so it draws nothing a second time.
+    @ModifyArg(
         method = "renderLayer",
         at = @At(
             value = "INVOKE",
@@ -995,8 +1036,21 @@ public abstract class PatchedItemInHandLayerMixin {
                      "Lcom/mojang/blaze3d/vertex/PoseStack;IF)V",
             ordinal = 0
         ),
-        remap = false
+        index = 4,
+        remap = false,
+        require = 0
     )
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private MultiBufferSource efsm$mainHandRenderItemInHand(
+            ItemStack stack, LivingEntityPatch entitypatch, InteractionHand hand, OpenMatrix4f[] poses,
+            MultiBufferSource buffer, PoseStack postStack, int packedLight, float partialTicks) {
+        RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(stack);
+        if (renderer == null) return buffer;
+        redirectMainHandRenderItemInHand(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+        return com.yoshio.epic_fight_sheathing_master.DiscardingBufferSource.INSTANCE;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
     private void redirectMainHandRenderItemInHand(
             RenderItemBase renderer,
             ItemStack stack,
@@ -1094,10 +1148,17 @@ public abstract class PatchedItemInHandLayerMixin {
             // hotbar/slot0 concept, so they never have a competing item and
             // always use the configured mode. Katana is unaffected (handled
             // above; its BACK-mode climbing stays native/unmodified).
-            WeaponCategory rawHeldCategory = EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory();
+            WeaponCategory rawHeldCategory = weaponCategoryOf(stack);
             if (!(rawHeldCategory instanceof CapabilityItem.WeaponCategories heldCategory)) return;
             DetachedSheathSpec spec = DETACHED_SHEATH_SPECS.get(heldCategory);
             if (spec == null) return;
+
+            // Evil Tachi puffs smoke along its blade at the hand (Weapons of Miracles): not where this mod draws it now.
+            ResourceLocation heldId = ForgeRegistries.ITEMS.getKey(stack.getItem());
+            if (heldId != null && "wom:evil_tachi".equals(heldId.toString())
+                    && entitypatch.getOriginal() instanceof Player smokePlayer) {
+                com.yoshio.epic_fight_sheathing_master.HeldWeaponSmoke.mark(smokePlayer);
+            }
 
             boolean hasCompeting = entitypatch.getOriginal() instanceof Player player
                     && hasCompetingHeldDetachedSheathWeapon(player);
@@ -1167,7 +1228,21 @@ public abstract class PatchedItemInHandLayerMixin {
                         packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
                 postStack.popPose();
             }
-        } else if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        } else if (isSatsujin(stack)
+                && entitypatch.getArmature() instanceof HumanoidArmature satsujinArmature
+                && isChestAlreadyOccupied(entitypatch, satsujinArmature)
+                && entitypatch.getOriginal() instanceof Player satsujinPlayer) {
+            // Satsujin held while climbing: blade and its scabbard where they are when it is idle (waist or back, per the config).
+            renderSatsujin(entitypatch, satsujinPlayer, stack, postStack, buffer, packedLight, poses, satsujinArmature,
+                    Minecraft.getInstance().getItemRenderer());
+        } else if (isBackOnlyItem(stack) && !isMoonless(stack)
+                && entitypatch.getArmature() instanceof HumanoidArmature backOnlyArmature
+                && isChestAlreadyOccupied(entitypatch, backOnlyArmature)
+                && entitypatch.getOriginal() instanceof Player backOnlyPlayer) {
+            // A back-only item (Nova) held while climbing goes to the very place it has when it is idle on the back.
+            renderHeldBackOnlyItem(renderer, stack, entitypatch, backOnlyArmature, backOnlyPlayer, poses, postStack,
+                    buffer, packedLight, false);
+        } else if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.SWORD
                 && entitypatch.getArmature() instanceof HumanoidArmature humanoidArmature
                 && isChestAlreadyOccupied(entitypatch, humanoidArmature)
@@ -1179,8 +1254,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // still Config-driven, only the side changes). Off-hand-is-sword
             // (genuine dual-wield) is excluded: the left position is already
             // the off-hand's own position in that case.
-            boolean offhandIsSword = EpicFightCapabilities.getItemStackCapability(swordPlayer.getOffhandItem())
-                    .getWeaponCategory() == CapabilityItem.WeaponCategories.SWORD;
+            boolean offhandIsSword = weaponCategoryOf(swordPlayer.getOffhandItem()) == CapabilityItem.WeaponCategories.SWORD;
             boolean evacuateToLeft = !offhandIsSword
                     && hasCompetingIdleWeapon(swordPlayer, CapabilityItem.WeaponCategories.SWORD);
 
@@ -1193,7 +1267,7 @@ public abstract class PatchedItemInHandLayerMixin {
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer =
                     Minecraft.getInstance().getItemRenderer();
             renderSwordBody(offsetKey, stack, baseMatrix, postStack, buffer, packedLight, itemRenderer);
-        } else if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        } else if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.LONGSWORD
                 && entitypatch.getArmature() instanceof HumanoidArmature humanoidArmature
                 && isChestAlreadyOccupied(entitypatch, humanoidArmature)
@@ -1203,8 +1277,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // in Epic Fight's own preset), so evacuateToLeft is effectively
             // always driven by hasCompetingIdleWeapon alone — kept in this
             // form for consistency and in case that restriction changes later.
-            boolean offhandIsLongsword = EpicFightCapabilities.getItemStackCapability(longswordPlayer.getOffhandItem())
-                    .getWeaponCategory() == CapabilityItem.WeaponCategories.LONGSWORD;
+            boolean offhandIsLongsword = weaponCategoryOf(longswordPlayer.getOffhandItem()) == CapabilityItem.WeaponCategories.LONGSWORD;
             boolean evacuateToLeft = !offhandIsLongsword
                     && hasCompetingIdleWeapon(longswordPlayer, CapabilityItem.WeaponCategories.LONGSWORD);
 
@@ -1217,7 +1290,7 @@ public abstract class PatchedItemInHandLayerMixin {
             net.minecraft.client.renderer.entity.ItemRenderer itemRenderer =
                     Minecraft.getInstance().getItemRenderer();
             renderSwordBody(offsetKey, stack, baseMatrix, postStack, buffer, packedLight, itemRenderer);
-        } else if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        } else if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.DAGGER
                 && entitypatch.getArmature() instanceof HumanoidArmature humanoidArmature
                 && isChestAlreadyOccupied(entitypatch, humanoidArmature)
@@ -1228,8 +1301,7 @@ public abstract class PatchedItemInHandLayerMixin {
             // between, unlike tachi/katana). Off-hand-is-dagger (genuine
             // dual-wield) is excluded: thighL is already the off-hand's own
             // position in that case, and must not be confused with this.
-            boolean offhandIsDagger = EpicFightCapabilities.getItemStackCapability(daggerPlayer.getOffhandItem())
-                    .getWeaponCategory() == CapabilityItem.WeaponCategories.DAGGER;
+            boolean offhandIsDagger = weaponCategoryOf(daggerPlayer.getOffhandItem()) == CapabilityItem.WeaponCategories.DAGGER;
             boolean evacuateToLeftThigh = !offhandIsDagger
                     && hasCompetingIdleWeapon(daggerPlayer, CapabilityItem.WeaponCategories.DAGGER);
             if (evacuateToLeftThigh) {
@@ -1239,6 +1311,55 @@ public abstract class PatchedItemInHandLayerMixin {
             }
         } else {
             renderNativeItemInHand(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+        }
+    }
+
+    // A back-only item (Nova) that is HELD while the player climbs (Epic Fight then carries held weapons on the Chest bone with
+    // its own correction): drawn where it is drawn when it is idle on the back, i.e. the tuned positions —
+    // main hand: Chest correction x "tachi_back" x "<item>_back"; off hand: the off-hand Chest correction x "tachi_back"
+    // mirrored x "<item>_back_off" (or the main-hand key mirrored), and the same collision boxes ("<tag>_off" for the off hand).
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void renderHeldBackOnlyItem(
+            RenderItemBase renderer, ItemStack stack, LivingEntityPatch entitypatch, HumanoidArmature humanoidArmature,
+            Player player, OpenMatrix4f[] poses, PoseStack postStack, MultiBufferSource buffer, int packedLight,
+            boolean offHand) {
+        boolean tachi = weaponCategoryOf(stack) == CapabilityItem.WeaponCategories.TACHI;
+        ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
+        String base = id != null ? id.getNamespace() + "." + id.getPath() + "_back" : null;
+        String hitboxTag = itemHitboxTag(stack, null);
+
+        postStack.pushPose();
+        try {
+            if (!offHand) {
+                MathUtils.mulStack(postStack, resolveChestCorrectionViaMainHand(renderer, entitypatch, humanoidArmature, poses));
+                if (tachi) applyOffset(postStack, TuneableOffset.REGISTRY.get("tachi_back"), false);
+                applyItemBackNudge(postStack, stack);
+                if (hitboxTag != null) {
+                    SheathCollisionSystem.instanceSlot = player.getInventory().selected;
+                    SheathCollisionSystem.checkAndPlaySound(player, hitboxTag, postStack);
+                }
+                Minecraft.getInstance().getItemRenderer().renderStatic(stack, ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
+                        packedLight, OverlayTexture.NO_OVERLAY, postStack, buffer, null, 0);
+            } else {
+                MathUtils.mulStack(postStack, resolveChestCorrectionViaOffHand(renderer, entitypatch, humanoidArmature, poses));
+                if (tachi) applyOffset(postStack, TuneableOffset.REGISTRY.get("tachi_back"), true);
+                if (base != null) {
+                    TuneableOffset own = TuneableOffset.REGISTRY.get(base + "_off");
+                    if (own != null) applyOffset(postStack, own, false);
+                    else applyOffset(postStack, TuneableOffset.REGISTRY.get(base), true);
+                }
+                if (hitboxTag != null) {
+                    String offOwn = hitboxTag + "_off";
+                    SheathCollisionSystem.instanceSlot = 40; // the off-hand slot: its own collision state
+                    SheathCollisionSystem.checkAndPlaySound(player,
+                            SheathHitboxProfile.REGISTRY.containsKey(offOwn) ? offOwn : hitboxTag, postStack);
+                }
+                RenderItemBaseAccessor.getItemInHandRenderer().renderItem(
+                        player, stack, ItemDisplayContext.THIRD_PERSON_LEFT_HAND, true, postStack, buffer, packedLight);
+            }
+        } finally {
+            SheathCollisionSystem.instanceSlot = 0;
+            postStack.popPose();
         }
     }
 
@@ -1392,7 +1513,7 @@ public abstract class PatchedItemInHandLayerMixin {
             RenderItemBase renderer, ItemStack stack, LivingEntityPatch entitypatch,
             InteractionHand hand, OpenMatrix4f[] poses, MultiBufferSource buffer,
             PoseStack postStack, int packedLight, float partialTicks) {
-        boolean isDagger = EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        boolean isDagger = weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.DAGGER;
         if (isDagger) {
             boolean isMainHand = hand == InteractionHand.MAIN_HAND;
@@ -1472,13 +1593,20 @@ public abstract class PatchedItemInHandLayerMixin {
             return;
         }
 
-        if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.DAGGER
                 && entitypatch.getArmature() instanceof HumanoidArmature humanoidArmature
                 && isChestAlreadyOccupied(entitypatch, humanoidArmature)
                 && entitypatch.getOriginal() instanceof Player daggerPlayer) {
             renderDaggerAtWaist("dagger_offhand", stack, daggerPlayer, postStack, buffer, packedLight, poses, humanoidArmature.thighL);
-        } else if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        } else if (isBackOnlyItem(stack) && !isMoonless(stack)
+                && entitypatch.getArmature() instanceof HumanoidArmature backOnlyArmature
+                && isChestAlreadyOccupied(entitypatch, backOnlyArmature)
+                && entitypatch.getOriginal() instanceof Player backOnlyPlayer) {
+            // Dual-wielding back-only items (Nova) while climbing: the off-hand one goes to its idle off-hand place.
+            renderHeldBackOnlyItem(renderer, stack, entitypatch, backOnlyArmature, backOnlyPlayer, poses, postStack,
+                    buffer, packedLight, true);
+        } else if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.SWORD
                 && entitypatch.getArmature() instanceof HumanoidArmature swordHumanoidArmature
                 && isChestAlreadyOccupied(entitypatch, swordHumanoidArmature)) {
@@ -1491,7 +1619,7 @@ public abstract class PatchedItemInHandLayerMixin {
                     Minecraft.getInstance().getItemRenderer();
             renderSwordBody(useWaist ? "sword_offhand" : "sword_offhand_back", stack, baseMatrix,
                     postStack, buffer, packedLight, itemRenderer);
-        } else if (EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory()
+        } else if (weaponCategoryOf(stack)
                 == CapabilityItem.WeaponCategories.LONGSWORD
                 && entitypatch.getArmature() instanceof HumanoidArmature longswordHumanoidArmature
                 && isChestAlreadyOccupied(entitypatch, longswordHumanoidArmature)) {
@@ -1578,10 +1706,10 @@ public abstract class PatchedItemInHandLayerMixin {
 
         // Held / off-hand daggers only get a sheath when sheath-allowlisted.
         boolean offhandIsDagger = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getOffhandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getOffhandItem())
                 == CapabilityItem.WeaponCategories.DAGGER;
         boolean mainHandIsDagger = SheathAllowlist.isSheathAllowed(player.getMainHandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getMainHandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getMainHandItem())
                 == CapabilityItem.WeaponCategories.DAGGER;
         boolean evacuatingHeldDagger = !offhandIsDagger
                 && mainHandIsDagger
@@ -1885,10 +2013,10 @@ public abstract class PatchedItemInHandLayerMixin {
                 && !sheathSpotTakenByUnsheathed(player, CapabilityItem.WeaponCategories.SWORD, slot0);
         // Held / off-hand swords only get a sheath when sheath-allowlisted.
         boolean offhandIsSword = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getOffhandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getOffhandItem())
                 == CapabilityItem.WeaponCategories.SWORD;
         boolean mainHandIsSword = SheathAllowlist.isSheathAllowed(player.getMainHandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getMainHandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getMainHandItem())
                 == CapabilityItem.WeaponCategories.SWORD;
         boolean evacuatingHeldSword = !offhandIsSword
                 && mainHandIsSword
@@ -1991,10 +2119,10 @@ public abstract class PatchedItemInHandLayerMixin {
                 && !sheathSpotTakenByUnsheathed(player, CapabilityItem.WeaponCategories.LONGSWORD, slot0);
         // Held / off-hand longswords only get a sheath when sheath-allowlisted.
         boolean offhandIsLongsword = SheathAllowlist.isSheathAllowed(player.getOffhandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getOffhandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getOffhandItem())
                 == CapabilityItem.WeaponCategories.LONGSWORD;
         boolean mainHandIsLongsword = SheathAllowlist.isSheathAllowed(player.getMainHandItem())
-                && EpicFightCapabilities.getItemStackCapability(player.getMainHandItem()).getWeaponCategory()
+                && weaponCategoryOf(player.getMainHandItem())
                 == CapabilityItem.WeaponCategories.LONGSWORD;
         boolean evacuatingHeldLongsword = !offhandIsLongsword
                 && mainHandIsLongsword
@@ -2119,7 +2247,7 @@ public abstract class PatchedItemInHandLayerMixin {
                     ItemStack idleStack = player.getInventory().getItem(idleSlot);
                     if (!SheathAllowlist.isSheathAllowed(idleStack)) continue;
                     if (isBackOnlyItem(idleStack)) continue;
-                    if (EpicFightCapabilities.getItemStackCapability(idleStack).getWeaponCategory() != category) continue;
+                    if (weaponCategoryOf(idleStack) != category) continue;
                     boolean isFirst = first;
                     first = false;
                     if (!isFirst && idleSlot == selectedSlot) continue;
@@ -2273,7 +2401,7 @@ public abstract class PatchedItemInHandLayerMixin {
         if (isBackOnlyItem(heldStack)) return;
         if (!SheathAllowlist.isSheathAllowed(heldStack)) return;
         CapabilityItem heldCapability = EpicFightCapabilities.getItemStackCapability(heldStack);
-        WeaponCategory rawHeldCategory = heldCapability.getWeaponCategory();
+        WeaponCategory rawHeldCategory = weaponCategoryOf(heldStack);
         if (!(rawHeldCategory instanceof CapabilityItem.WeaponCategories heldCategory)) return;
         DetachedSheathSpec spec = DETACHED_SHEATH_SPECS.get(heldCategory);
         if (spec == null) return;
@@ -2443,7 +2571,7 @@ public abstract class PatchedItemInHandLayerMixin {
 
                 // Resolve weapon category via Epic Fight's capability system.
                 // getItemStackCapability never returns null (falls back to CapabilityItem.EMPTY).
-                WeaponCategory rawCategory = EpicFightCapabilities.getItemStackCapability(idleStack).getWeaponCategory();
+                WeaponCategory rawCategory = weaponCategoryOf(idleStack);
 
                 // A custom WeaponCategory from another mod (e.g. EFN's Yamato): only the 3D mesh weapons this mod knows
                 // are drawn (MeshWeaponIdleRenderer returns false for anything else).
