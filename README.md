@@ -22,7 +22,8 @@ None of these is required. Their weapons are also shown on your body when the mo
 
 - **EpicFight Nightfall (EFN)**
 - **Epic Fight: Avalon**
-- **Weapons of Miracles (WoM)** — fully supported: every weapon has its own position, most of them have collision, and some have their own 3D sheath (Evil Tachi, Hollow Longsword, Satsujin). Moonless is shown with its handle at the hip and its blade floating at the back.
+- **Weapons of Miracles (WoM)**
+- All of them are fully supported: every weapon has its own position, most of them have collision, and some have their own 3D sheath.
 
 The mod declares them as optional dependencies without a version limit, so use whichever version you like — at your own risk.
 
