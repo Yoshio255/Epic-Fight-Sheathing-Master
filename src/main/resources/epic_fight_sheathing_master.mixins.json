@@ -4,6 +4,7 @@
   "package": "com.yoshio.epic_fight_sheathing_master.mixin",
   "compatibilityLevel": "JAVA_17",
   "refmap": "epic_fight_sheathing_master.refmap.json",
+  "plugin": "com.yoshio.epic_fight_sheathing_master.EfsmMixinPlugin",
   "mixins": [
     "CapabilityItemMixin",
     "BattojutsuPassiveMixin",
@@ -11,6 +12,8 @@
   ],
   "client": [
     "PatchedItemInHandLayerMixin",
+    "MainHandRedirectMixin",
+    "MainHandModifyArgMixin",
     "RenderItemBaseAccessor",
     "AvalonAnimationItemRenderMixin",
     "ClientLevelParticleMixin"

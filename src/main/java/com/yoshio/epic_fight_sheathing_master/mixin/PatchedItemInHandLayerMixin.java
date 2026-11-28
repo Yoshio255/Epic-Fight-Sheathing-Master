@@ -42,7 +42,6 @@ import net.minecraftforge.registries.RegistryObject;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
@@ -78,7 +77,7 @@ import yesman.epicfight.world.item.UchigatanaItem;
 // redirectMainHandRenderItemInHand's require = 0) instead of the game crashing or the other addon failing. A higher value
 // would make it the other way round and crash the other addon.
 @Mixin(value = PatchedItemInHandLayer.class, priority = 500)
-public abstract class PatchedItemInHandLayerMixin {
+public abstract class PatchedItemInHandLayerMixin implements com.yoshio.epic_fight_sheathing_master.MainHandHooks {
 
     // ── Category filter ────────────────────────────────────────────────────────
 
@@ -205,8 +204,25 @@ public abstract class PatchedItemInHandLayerMixin {
         if (id != null) {
             CapabilityItem.WeaponCategories official = OFFICIAL_CATEGORIES.get(id.toString());
             if (official != null) return official;
+            // EpicFight-Resurrection's vanilla-textured weapons (cdmoveset:s_<tier>_<type>) have categories of their own
+            // (S_SWORD, S_TACHI, ...); they look like, and are carried like, the Epic Fight weapon of their type.
+            if ("cdmoveset".equals(id.getNamespace()) && id.getPath().startsWith("s_")) {
+                CapabilityItem.WeaponCategories byType = resurrectionVanillaCategory(id.getPath());
+                if (byType != null) return byType;
+            }
         }
         return EpicFightCapabilities.getItemStackCapability(stack).getWeaponCategory();
+    }
+
+    // "s_iron_longsword" -> LONGSWORD, ...; null for anything else. The longer type names are tested first ("_sword" ends all of them).
+    private static CapabilityItem.WeaponCategories resurrectionVanillaCategory(String path) {
+        if (path.endsWith("_longsword")) return CapabilityItem.WeaponCategories.LONGSWORD;
+        if (path.endsWith("_greatsword")) return CapabilityItem.WeaponCategories.GREATSWORD;
+        if (path.endsWith("_sword")) return CapabilityItem.WeaponCategories.SWORD;
+        if (path.endsWith("_spear")) return CapabilityItem.WeaponCategories.SPEAR;
+        if (path.endsWith("_tachi")) return CapabilityItem.WeaponCategories.TACHI;
+        if (path.endsWith("_dagger")) return CapabilityItem.WeaponCategories.DAGGER;
+        return null;
     }
 
     private static boolean isBackOnlyItem(ItemStack stack) {
@@ -1018,36 +1034,37 @@ public abstract class PatchedItemInHandLayerMixin {
     //
     // Condition-false path: fall through to the original renderItemInHand call.
 
-    // This is a @ModifyArg (the buffer), not a @Redirect: another addon (Epic Fight: BK's Poise & Stance) redirects the very same call, and only
-    // one @Redirect can take an instruction (a crash for the one that loses). @ModifyArg does not replace the call, it only
-    // changes one argument (not @ModifyArgs: its generated Args class could not be loaded in a Forge environment), so it works together with such a redirect (this mod is applied first, see the priority). The handler
-    // below draws the held weapon itself (redirectMainHandRenderItemInHand, which also does the pass-through draws), then hands
-    // the original call a buffer that discards everything, so it draws nothing a second time.
-    @ModifyArg(
-        method = "renderLayer",
-        at = @At(
-            value = "INVOKE",
-            target = "Lyesman/epicfight/client/renderer/patched/item/RenderItemBase;" +
-                     "renderItemInHand(Lnet/minecraft/world/item/ItemStack;" +
-                     "Lyesman/epicfight/world/capabilities/entitypatch/LivingEntityPatch;" +
-                     "Lnet/minecraft/world/InteractionHand;" +
-                     "[Lyesman/epicfight/api/utils/math/OpenMatrix4f;" +
-                     "Lnet/minecraft/client/renderer/MultiBufferSource;" +
-                     "Lcom/mojang/blaze3d/vertex/PoseStack;IF)V",
-            ordinal = 0
-        ),
-        index = 4,
-        remap = false,
-        require = 0
-    )
+    // The hook itself is in MainHandRedirectMixin (a plain @Redirect, the default) or MainHandModifyArgMixin (a @ModifyArg on the buffer,
+    // when Epic Fight: BK's Poise & Stance, which redirects the same call, is installed); EfsmMixinPlugin picks one. They call these
+    // two methods, which this mixin adds to the target class through the MainHandHooks interface.
+
+    // The @Redirect way: draws the item here, a pass-through right away.
+    @Override
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private MultiBufferSource efsm$mainHandRenderItemInHand(
+    public void efsm$mainHand(
+            RenderItemBase renderer, ItemStack stack, LivingEntityPatch entitypatch, InteractionHand hand, OpenMatrix4f[] poses,
+            MultiBufferSource buffer, PoseStack postStack, int packedLight, float partialTicks) {
+        redirectMainHandRenderItemInHand(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+    }
+
+    // The @ModifyArg way: the original call is still made, so a pass-through is not drawn here, only reported (true): the
+    // original call then draws it with the real buffer, untouched. Otherwise this mod has drawn it (false), and the original
+    // call is given a buffer that discards everything.
+    @Override
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public boolean efsm$mainHandDeferred(
             ItemStack stack, LivingEntityPatch entitypatch, InteractionHand hand, OpenMatrix4f[] poses,
             MultiBufferSource buffer, PoseStack postStack, int packedLight, float partialTicks) {
         RenderItemBase renderer = ClientEngine.getInstance().renderEngine.getItemRenderer(stack);
-        if (renderer == null) return buffer;
-        redirectMainHandRenderItemInHand(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
-        return com.yoshio.epic_fight_sheathing_master.DiscardingBufferSource.INSTANCE;
+        if (renderer == null) return true;
+        mainHandHook = true;
+        mainHandPassedThrough = false;
+        try {
+            redirectMainHandRenderItemInHand(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+        } finally {
+            mainHandHook = false;
+        }
+        return mainHandPassedThrough;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1133,7 +1150,7 @@ public abstract class PatchedItemInHandLayerMixin {
             } else {
                 // Native BACK-mode passthrough — identical to Epic Fight's own
                 // default climbing render, same as the non-competing case.
-                renderer.renderItemInHand(stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+                passThroughDraw(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
             }
         } else if (isDetachedSheathCategory(stack)
                 && entitypatch.getArmature() instanceof HumanoidArmature humanoidArmature
@@ -1400,6 +1417,24 @@ public abstract class PatchedItemInHandLayerMixin {
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
+    // While the main-hand hook runs (efsm$mainHandRenderItemInHand), a "pass-through" (draw it the normal way) is not done here: it
+    // is only noted, and the original call, which then keeps the real buffer, does the drawing. Otherwise (off hand, or no hook) it
+    // draws right away.
+    private static boolean mainHandHook = false;
+    private static boolean mainHandPassedThrough = false;
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void passThroughDraw(
+            RenderItemBase renderer, ItemStack stack, LivingEntityPatch entitypatch,
+            InteractionHand hand, OpenMatrix4f[] poses, MultiBufferSource buffer,
+            PoseStack postStack, int packedLight, float partialTicks) {
+        if (mainHandHook && hand == InteractionHand.MAIN_HAND) {
+            mainHandPassedThrough = true;
+            return;
+        }
+        renderer.renderItemInHand(stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+    }
+
     private static void renderBypassed(
             RenderItemBase renderer, ItemStack stack, LivingEntityPatch entitypatch,
             InteractionHand hand, OpenMatrix4f[] poses, MultiBufferSource buffer,
@@ -1425,7 +1460,7 @@ public abstract class PatchedItemInHandLayerMixin {
                             () -> computeEfCarryCorrection(humanoidArmature), hand == InteractionHand.OFF_HAND, true)) {
                 return;
             }
-            renderer.renderItemInHand(stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+            passThroughDraw(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
             // Held: the mesh's own waist scabbard (co_tachi) still clanks against blocks.
             if (hand == InteractionHand.MAIN_HAND
                     && SheathAllowlist.isAllowed(stack)
@@ -1545,7 +1580,7 @@ public abstract class PatchedItemInHandLayerMixin {
                     (LivingEntity) entitypatch.getOriginal(), stack, context, leftHand, postStack, buffer, packedLight);
             postStack.popPose();
         } else {
-            renderer.renderItemInHand(stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
+            passThroughDraw(renderer, stack, entitypatch, hand, poses, buffer, postStack, packedLight, partialTicks);
         }
     }
 

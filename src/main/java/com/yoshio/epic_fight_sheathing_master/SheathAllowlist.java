@@ -101,7 +101,19 @@ public final class SheathAllowlist {
     // Sheath list: only wom:evil_tachi, wom:hollow_longsword and wom:satsujin by default (they are drawn with their own 3D sheath,
     // see the mixin's ownSheathItem). The generic category sheaths (sword, longsword, dagger, ...) must NOT appear on
     // EFN weapons; the box sheath that MeshWeaponIdleRenderer draws itself is governed by isOwnSheathAllowed instead.
-    private static final Set<String> DEFAULT_SHEATH_ITEMS = Set.of("wom:evil_tachi", "wom:hollow_longsword", "wom:satsujin");
+    // Also the vanilla-textured weapons of EpicFight-Resurrection (cdmoveset:s_<tier>_<type>), which are read as the Epic Fight
+    // category of their type (see the mixin's weaponCategoryOf) and get the same sheaths as the vanilla ones.
+    private static final Set<String> DEFAULT_SHEATH_ITEMS = defaultSheathItems();
+
+    private static Set<String> defaultSheathItems() {
+        Set<String> items = new java.util.HashSet<>(Set.of("wom:evil_tachi", "wom:hollow_longsword", "wom:satsujin"));
+        for (String tier : new String[]{"wooden", "stone", "iron", "golden", "diamond", "netherite"}) {
+            for (String type : new String[]{"sword", "longsword", "greatsword", "spear", "tachi", "dagger"}) {
+                items.add("cdmoveset:s_" + tier + "_" + type);
+            }
+        }
+        return Set.copyOf(items);
+    }
 
     private static final Pattern NAMESPACE = Pattern.compile("[a-z0-9_.-]+");
     private static final Pattern PATH = Pattern.compile("[a-z0-9_./-]+");

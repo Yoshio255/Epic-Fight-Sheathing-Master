@@ -92,6 +92,15 @@ mandatory = false
 versionRange = "[0,)"
 ordering = "AFTER"
 side = "BOTH"
+# Optional integration with EpicFight-Resurrection (cdmoveset): its weapons are drawn on the body. The code only looks at
+# item ids (no Resurrection classes), so this is for load order and the mod list. NOT required. Any version is accepted
+# (use at your own risk).
+[[dependencies."${mod_id}"]]
+modId = "cdmoveset"
+mandatory = false
+versionRange = "[0,)"
+ordering = "AFTER"
+side = "BOTH"
 # Optional integration with Weapons of Miracles (wom): its weapons are drawn on the body. The code only
 # looks at item ids (no WoM classes), so this is for load order and the mod list. NOT required. Any version
 # is accepted (use at your own risk).

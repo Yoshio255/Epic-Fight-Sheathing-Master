@@ -29,17 +29,21 @@ import net.minecraft.client.renderer.RenderType;
 public final class DiscardingBufferSource extends MultiBufferSource.BufferSource {
     public static final DiscardingBufferSource INSTANCE = new DiscardingBufferSource();
 
-    private static final VertexConsumer DISCARD = new VertexConsumer() {
-        @Override public VertexConsumer vertex(double x, double y, double z) { return this; }
-        @Override public VertexConsumer color(int r, int g, int b, int a) { return this; }
-        @Override public VertexConsumer uv(float u, float v) { return this; }
-        @Override public VertexConsumer overlayCoords(int u, int v) { return this; }
-        @Override public VertexConsumer uv2(int u, int v) { return this; }
-        @Override public VertexConsumer normal(float x, float y, float z) { return this; }
-        @Override public void endVertex() { }
-        @Override public void defaultColor(int r, int g, int b, int a) { }
-        @Override public void unsetDefaultColor() { }
-    };
+    // A new consumer for every getBuffer call, never one shared instance: an enchanted item's glint is drawn through
+    // VertexMultiConsumer.create(glint buffer, normal buffer), which throws "Duplicate delegates" for two identical consumers.
+    private static VertexConsumer discard() {
+        return new VertexConsumer() {
+            @Override public VertexConsumer vertex(double x, double y, double z) { return this; }
+            @Override public VertexConsumer color(int r, int g, int b, int a) { return this; }
+            @Override public VertexConsumer uv(float u, float v) { return this; }
+            @Override public VertexConsumer overlayCoords(int u, int v) { return this; }
+            @Override public VertexConsumer uv2(int u, int v) { return this; }
+            @Override public VertexConsumer normal(float x, float y, float z) { return this; }
+            @Override public void endVertex() { }
+            @Override public void defaultColor(int r, int g, int b, int a) { }
+            @Override public void unsetDefaultColor() { }
+        };
+    }
 
     private DiscardingBufferSource() {
         super(new BufferBuilder(256), java.util.Map.of());
@@ -47,7 +51,7 @@ public final class DiscardingBufferSource extends MultiBufferSource.BufferSource
 
     @Override
     public VertexConsumer getBuffer(RenderType type) {
-        return DISCARD;
+        return discard();
     }
 
     @Override
